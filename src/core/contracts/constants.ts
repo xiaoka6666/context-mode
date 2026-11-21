@@ -218,6 +218,7 @@ export const HOST_SESSION_META: Readonly<Partial<Record<string, string>>> = Obje
 export const NODE_MIN = "24.15.0"; // S-NODE
 export const DATA_ROOT = "~/.context-mode"; // PRD §4; the store module expands "~"
 export const DATA_DIR_ENV = "CONTEXT_MODE_DATA_DIR"; // #1318 D-DATA-DIR-ENV-1: set and not empty, it replaces DATA_ROOT for every read and write
+export const BUNDLE_DIR_ENV = "CONTEXT_MODE_BUNDLE_DIR"; // in-process host shims whose loader rewrites import.meta.url (OpenClaw's gateway TS extension loader) pin the release bundle root (the dir holding server.mjs); the entry validates it
 export const INTERNAL_ERROR_LINE = "Internal error. Fix: run ctx_doctor."; // impl/11 §5 step 7d, §7 table
 export const REQUIRE_SECURITY_ENV = "CONTEXT_MODE_REQUIRE_SECURITY"; // v1 issue #468; DECISIONS-r9 E2
 

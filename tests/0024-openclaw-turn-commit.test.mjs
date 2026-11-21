@@ -6,13 +6,15 @@
 // so D5 finds the release fixtures instead of the host's dist.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { recordTurnCommit, TURN_COMMIT_LEDGER_FILE, MAX_LEDGER_KEYS } from "../src/core/ops/turn-commit-ledger.ts";
 import { ownBundleDir, pinOwnBundleDir, bundleDirOf } from "../src/core/ops/bundle-dir.ts";
+import { BUNDLE_DIR_ENV } from "../src/core/contracts/constants.ts";
+import openclawEntry from "../src/entries/openclaw.ts";
 
 function scratchDir(t) {
   const dir = mkdtempSync(join(tmpdir(), "cm-turn-commit-"));
@@ -65,4 +67,27 @@ test("ownBundleDir: a pin set by the in-process entry wins over the argv-based f
 test("bundleDirOf: an argv dir without server.mjs falls back to the module walk-up", () => {
   const self = fileURLToPath(import.meta.url); // tests/ dir, no server.mjs above the repo root
   assert.equal(bundleDirOf("/nonexistent/host/dist/index.js", self), "/nonexistent/host/dist");
+});
+
+test("entry register: BUNDLE_DIR_ENV wins over the module walk (the OpenClaw gateway shim scenario)", (t) => {
+  // The gateway's TS loader rewrites import.meta.url of the re-exported entry, so the walk-up finds no
+  // server.mjs; the shim pins the bundle root via the env var instead. A dir without server.mjs is rejected.
+  const bundle = mkdtempSync(join(tmpdir(), "cm-bundle-"));
+  writeFileSync(join(bundle, "server.mjs"), "");
+  const wrong = mkdtempSync(join(tmpdir(), "cm-bundle-wrong-"));
+  const prevPinValue = ownBundleDir(); // the pin set by earlier tests in this file, or the argv-based answer
+  const prevEnv = process.env[BUNDLE_DIR_ENV];
+  const noop = { on() {}, registerHook() {}, registerTool() {}, registerContextEngine() {}, onDiagnosticEvent() {} };
+  t.after(() => {
+    rmSync(bundle, { recursive: true, force: true });
+    rmSync(wrong, { recursive: true, force: true });
+    pinOwnBundleDir(prevPinValue); // restore
+    if (prevEnv === undefined) delete process.env[BUNDLE_DIR_ENV]; else process.env[BUNDLE_DIR_ENV] = prevEnv;
+  });
+  process.env[BUNDLE_DIR_ENV] = wrong; // no server.mjs there -> the env pin must be refused
+  openclawEntry.register(noop);
+  assert.equal(ownBundleDir(), prevPinValue); // walk-up from src/ pins nothing: the previous answer stands
+  process.env[BUNDLE_DIR_ENV] = bundle; // valid: holds server.mjs
+  openclawEntry.register(noop);
+  assert.equal(ownBundleDir(), bundle);
 });

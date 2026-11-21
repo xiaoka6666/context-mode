@@ -7,7 +7,7 @@
 // Every hook builds the raw call-site object the openclaw adapter decodes (src/adapters/openclaw.ts) and
 // calls handleHook; this file never opens context.db except through ownJournal for the ctx_* tool rows.
 import { z } from "zod/v4";
-import { INTERNAL_ERROR_LINE, PLUGIN_ID, SERVER_ENTRY_FILE } from "../core/contracts/constants.ts";
+import { BUNDLE_DIR_ENV, INTERNAL_ERROR_LINE, PLUGIN_ID, SERVER_ENTRY_FILE } from "../core/contracts/constants.ts";
 import { CtxError } from "../core/contracts/errors.ts";
 import type { HookOutput, ProjectContext, ToolContext, ToolReply } from "../core/contracts/types.ts";
 import { handleHook } from "../core/hooks/dispatch.ts";
@@ -127,11 +127,17 @@ export default {
 
     // Pin the doctor's bundle dir for this host (bundle-dir.ts): in the gateway argv[1] is the host's own
     // script, so the argv-based ownBundleDir() falls back to the host's dist and D5 would look for
-    // fixtures/hook-roundtrip.json and hook.mjs there (absent: "hook fixture ... is absent"). This module
-    // ships inside the release bundle, so the nearest ancestor of its own file that holds server.mjs is
-    // the bundle root (release-out/ in the stock layout); a dev tree (no server.mjs above src/) pins
-    // nothing and keeps the argv-based behavior.
-    {
+    // fixtures/hook-roundtrip.json and hook.mjs there (absent: "hook fixture ... is absent"). Two pin
+    // sources, in priority order:
+    //  1. BUNDLE_DIR_ENV — the host shim sets it when its loader rewrites import.meta.url (the OpenClaw
+    //     gateway loads extensions/context-mode/index.ts, whose re-exported entry no longer "sits next to"
+    //     server.mjs from the loader's point of view). Validated: the dir must hold SERVER_ENTRY_FILE.
+    //  2. the nearest ancestor of this module's own file that holds server.mjs (release-out/ in the stock
+    //     layout; a dev tree pins nothing and keeps the argv-based behavior).
+    const envPin = env[BUNDLE_DIR_ENV];
+    if (typeof envPin === "string" && envPin !== "" && existsSync(join(envPin, SERVER_ENTRY_FILE))) {
+      pinOwnBundleDir(envPin);
+    } else {
       let dir = dirname(fileURLToPath(import.meta.url));
       for (;;) {
         if (existsSync(join(dir, SERVER_ENTRY_FILE))) {

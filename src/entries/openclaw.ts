@@ -7,14 +7,21 @@
 // Every hook builds the raw call-site object the openclaw adapter decodes (src/adapters/openclaw.ts) and
 // calls handleHook; this file never opens context.db except through ownJournal for the ctx_* tool rows.
 import { z } from "zod/v4";
-import { INTERNAL_ERROR_LINE, PLUGIN_ID } from "../core/contracts/constants.ts";
+import { INTERNAL_ERROR_LINE, PLUGIN_ID, SERVER_ENTRY_FILE } from "../core/contracts/constants.ts";
 import { CtxError } from "../core/contracts/errors.ts";
 import type { HookOutput, ProjectContext, ToolContext, ToolReply } from "../core/contracts/types.ts";
 import { handleHook } from "../core/hooks/dispatch.ts";
 import { ownJournal } from "../core/journal/own-call.ts";
+import { pinOwnBundleDir } from "../core/ops/bundle-dir.ts";
+import { recordTurnCommit } from "../core/ops/turn-commit-ledger.ts";
 import { resolveProject } from "../core/project/resolve.ts";
+import { resolveConfigDir } from "../core/project/config-dir.ts";
 import { TOOLS, checkCall } from "../core/tools/registry.ts";
 import { INSTRUCTIONS } from "../prompt/_generated.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const { existsSync } = process.getBuiltinModule("node:fs") as typeof import("node:fs"); // D-CI-PERF-3
 
 const AGENT = "openclaw" as const; // AgentId, joins the list in contracts/agents.ts
 
@@ -71,14 +78,28 @@ export interface OpenClawContextEngine {
    *  every turn. context-mode supplies all of them; its own compaction strategy is still delegated to the
    *  host (ownsCompaction: false, no-op compact). `transcriptSemantics.currentTurnFence` is required for
    *  durable recorder turns (context-engine-logical-turn.ts): without the declaration the host degrades
-   *  with "current-turn transcript fencing is not declared" even when the base contract is satisfied. */
-  readonly info: { id: string; name: string; version?: string; transcriptSemantics?: { currentTurnFence?: "before-current-turn-entry-v1" } };
+   *  with "current-turn transcript fencing is not declared" even when the base contract is satisfied.
+   *  `transcriptSemantics.turnAdvancementIdempotency` plus `commitTurn` (host-compat.ts) is the second
+   *  durable gate: without both, recorder turns degrade with "atomic idempotent turn advancement is not
+   *  declared". */
+  readonly info: {
+    id: string;
+    name: string;
+    version?: string;
+    transcriptSemantics?: {
+      currentTurnFence?: "before-current-turn-entry-v1";
+      turnAdvancementIdempotency?: "atomic-idempotent-v1";
+    };
+  };
   ownsCompaction?: boolean;
   compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ok: boolean; compacted: boolean }>;
   /** Passthrough: context-mode does not store per-message context; the host keeps its own transcript. */
   ingest(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ingested: boolean }>;
   /** Passthrough: return the supplied messages unchanged; truncation stays with the host (ownsCompaction: false). */
   assemble(params?: { messages?: unknown[]; [k: string]: unknown }): Promise<{ messages: unknown[]; estimatedTokens: number }>;
+  /** Durable outbox commit (host "atomic-idempotent-v1"): the host retries the same advancement key after
+   *  a process or plugin failure; first sight answers "committed", every retry "duplicate". */
+  commitTurn?(params?: { advancementKey?: string; [k: string]: unknown }): Promise<{ status: "committed" | "duplicate" }>;
 }
 
 /** The OpenClaw plugin API surface this entry uses. register() is synchronous (the host calls it once per
@@ -103,12 +124,34 @@ export default {
   register(api: OpenClawApi): void {
     const cwd = process.cwd(); // the project dir: the Gateway session cwd at plugin load (row projectSource spawn-cwd)
     const env = process.env;
+
+    // Pin the doctor's bundle dir for this host (bundle-dir.ts): in the gateway argv[1] is the host's own
+    // script, so the argv-based ownBundleDir() falls back to the host's dist and D5 would look for
+    // fixtures/hook-roundtrip.json and hook.mjs there (absent: "hook fixture ... is absent"). This module
+    // ships inside the release bundle, so the nearest ancestor of its own file that holds server.mjs is
+    // the bundle root (release-out/ in the stock layout); a dev tree (no server.mjs above src/) pins
+    // nothing and keeps the argv-based behavior.
+    {
+      let dir = dirname(fileURLToPath(import.meta.url));
+      for (;;) {
+        if (existsSync(join(dir, SERVER_ENTRY_FILE))) {
+          pinOwnBundleDir(dir);
+          break;
+        }
+        const up = dirname(dir);
+        if (up === dir) break;
+        dir = up;
+      }
+    }
+
     let sessionId = ""; // the host session id, assigned at session_start (v2.2.0: e.sessionId)
     let turn = 0; // counted by user prompts; step-finish and the tool calls read it (D-M5-P2-2)
     let project: ProjectContext | undefined;
     let payloadPromise: Promise<string> | undefined;
     let promptHint = ""; // the last UserPromptSubmit hook stdout (the pending-compact summary, when one is due)
     const journal = ownJournal(); // D-HF-INPROC-JOURNAL-1
+    let commitChain: Promise<{ status: "committed" | "duplicate" }> | undefined; // serializes concurrent commitTurn calls
+    let commitDataRoot: string | undefined; // memoized resolveConfigDir(env) (one mkdir + realpath)
 
     const call = (raw: Record<string, unknown>): Promise<HookOutput> =>
       handleHook(AGENT, { ...raw, sessionId, directory: cwd }, env);
@@ -239,7 +282,12 @@ export default {
         // declares the current-turn fence; without it the host degrades to legacy every turn
         // ("current-turn transcript fencing is not declared"). Our assemble is a no-op passthrough, so
         // the fence declaration is safe: the host performs the actual transcript fencing itself.
-        transcriptSemantics: { currentTurnFence: "before-current-turn-entry-v1" },
+        // turnAdvancementIdempotency + commitTurn is the second durable gate (host-compat.ts): without
+        // both the host degrades recorder turns with "atomic idempotent turn advancement is not declared".
+        transcriptSemantics: {
+          currentTurnFence: "before-current-turn-entry-v1",
+          turnAdvancementIdempotency: "atomic-idempotent-v1",
+        },
       },
       ownsCompaction: false,
       async compact() {
@@ -255,6 +303,23 @@ export default {
         // (ownsCompaction: false). estimatedTokens is a hint only and does not drive host admission.
         const messages = Array.isArray(params?.messages) ? params.messages : [];
         return { messages, estimatedTokens: 0 };
+      },
+      commitTurn(params) {
+        // Durable outbox contract (OpenClaw src/context-engine/host-compat.ts:18 + the turn outbox): a
+        // recorder-backed turn retries the SAME advancement key after a process or plugin failure, so
+        // commitTurn must acknowledge idempotently — "committed" on first sight, "duplicate" on retry.
+        // context-mode journals each hook as it happens (nothing is pending at commit time), so the
+        // commit is the ledger record itself, kept under the data root.
+        const key = typeof params?.advancementKey === "string" ? params.advancementKey : "";
+        if (key === "") {
+          // The host always sends the outbox row's key; an empty one is a host bug. Acknowledge without
+          // recording instead of throwing: a thrown error re-queues the outbox row and retries forever.
+          return Promise.resolve({ status: "committed" as const });
+        }
+        commitDataRoot ??= resolveConfigDir(env);
+        const root = commitDataRoot;
+        commitChain = (commitChain ?? Promise.resolve()).then(() => ({ status: recordTurnCommit(root, key) }));
+        return commitChain;
       },
     }));
   },

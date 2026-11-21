@@ -66,8 +66,17 @@ export interface OpenClawToolDef {
 }
 
 export interface OpenClawContextEngine {
-  ownsCompaction: boolean;
-  compact(): Promise<{ ok: boolean; compacted: boolean }>;
+  /** OpenClaw ContextEngine contract (registry-contract.ts): the factory must return `info` (with non-empty
+   *  id + name) and `ingest`/`assemble`/`compact` functions or the host degrades the engine to "legacy"
+   *  every turn. context-mode supplies all of them; its own compaction strategy is still delegated to the
+   *  host (ownsCompaction: false, no-op compact). */
+  readonly info: { id: string; name: string; version?: string };
+  ownsCompaction?: boolean;
+  compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ok: boolean; compacted: boolean }>;
+  /** Passthrough: context-mode does not store per-message context; the host keeps its own transcript. */
+  ingest(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ingested: boolean }>;
+  /** Passthrough: return the supplied messages unchanged; truncation stays with the host (ownsCompaction: false). */
+  assemble(params?: { messages?: unknown[]; [k: string]: unknown }): Promise<{ messages: unknown[]; estimatedTokens: number }>;
 }
 
 /** The OpenClaw plugin API surface this entry uses. register() is synchronous (the host calls it once per
@@ -215,11 +224,26 @@ export default {
     }
 
     // 10. Context engine: context-mode does not own compaction (the host truncates); the engine is registered
-    // so the host asks the right component and gets a no-op compact.
+    // so the host asks the right component and gets a no-op compact. OpenClaw's registry contract additionally
+    // requires `info` (id + name) and `ingest`/`assemble` functions; without them the host degrades the engine
+    // to "legacy" on every logical turn ("missing info, missing ingest(), missing assemble()"). context-mode
+    // supplies them as passthroughs: it stores no per-message context and does not rewrite the message window.
     api.registerContextEngine?.(PLUGIN_ID, () => ({
+      info: { id: PLUGIN_ID, name: "Context Mode", version: "2.2.1" },
       ownsCompaction: false,
       async compact() {
         return { ok: true, compacted: false };
+      },
+      async ingest() {
+        // context-mode keeps large tool output out of the conversation via its hooks; it does not store
+        // the host's per-message transcript, so every host ingest is a no-op.
+        return { ingested: false };
+      },
+      async assemble(params) {
+        // Pass the host's message window through unchanged; truncation remains the host's responsibility
+        // (ownsCompaction: false). estimatedTokens is a hint only and does not drive host admission.
+        const messages = Array.isArray(params?.messages) ? params.messages : [];
+        return { messages, estimatedTokens: 0 };
       },
     }));
   },

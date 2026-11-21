@@ -69,8 +69,10 @@ export interface OpenClawContextEngine {
   /** OpenClaw ContextEngine contract (registry-contract.ts): the factory must return `info` (with non-empty
    *  id + name) and `ingest`/`assemble`/`compact` functions or the host degrades the engine to "legacy"
    *  every turn. context-mode supplies all of them; its own compaction strategy is still delegated to the
-   *  host (ownsCompaction: false, no-op compact). */
-  readonly info: { id: string; name: string; version?: string };
+   *  host (ownsCompaction: false, no-op compact). `transcriptSemantics.currentTurnFence` is required for
+   *  durable recorder turns (context-engine-logical-turn.ts): without the declaration the host degrades
+   *  with "current-turn transcript fencing is not declared" even when the base contract is satisfied. */
+  readonly info: { id: string; name: string; version?: string; transcriptSemantics?: { currentTurnFence?: "before-current-turn-entry-v1" } };
   ownsCompaction?: boolean;
   compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ok: boolean; compacted: boolean }>;
   /** Passthrough: context-mode does not store per-message context; the host keeps its own transcript. */
@@ -229,7 +231,16 @@ export default {
     // to "legacy" on every logical turn ("missing info, missing ingest(), missing assemble()"). context-mode
     // supplies them as passthroughs: it stores no per-message context and does not rewrite the message window.
     api.registerContextEngine?.(PLUGIN_ID, () => ({
-      info: { id: PLUGIN_ID, name: "Context Mode", version: "2.2.1" },
+      info: {
+        id: PLUGIN_ID,
+        name: "Context Mode",
+        version: "2.2.1",
+        // Durable recorder turns (OpenClaw's default session handling) only admit a context engine that
+        // declares the current-turn fence; without it the host degrades to legacy every turn
+        // ("current-turn transcript fencing is not declared"). Our assemble is a no-op passthrough, so
+        // the fence declaration is safe: the host performs the actual transcript fencing itself.
+        transcriptSemantics: { currentTurnFence: "before-current-turn-entry-v1" },
+      },
       ownsCompaction: false,
       async compact() {
         return { ok: true, compacted: false };

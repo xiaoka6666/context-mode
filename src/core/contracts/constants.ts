@@ -400,7 +400,8 @@ const READ_IMAGES_AND_PDF: readonly ReadMediaType[] = Object.freeze([...READ_IMA
  *  A host with no checked media path keeps the size deny for every file. */
 export const READ_MEDIA_BY_AGENT: Readonly<Record<AgentId, readonly ReadMediaType[]>> = Object.freeze({
   "claude-code": READ_IMAGES_AND_PDF, gemini: READ_IMAGES_AND_PDF, qwen: READ_IMAGES_AND_PDF, opencode: READ_IMAGES_AND_PDF,
-  pi: READ_IMAGES, omp: READ_IMAGES, vscode: READ_IMAGES, zcode: READ_IMAGES, "copilot-cli": [], codex: [], kiro: [],
+  pi: READ_IMAGES, omp: READ_IMAGES, vscode: READ_IMAGES, zcode: READ_IMAGES, openclaw: READ_IMAGES, // OpenClaw read: jpg/png/gif/webp/bmp blocks, no PDF
+  "copilot-cli": [], codex: [], kiro: [],
 });
 
 // impl/09 §4 hooks dispatch (DEVIATIONS D-M3-H2-1..6). Keys and texts the dispatch reads; no numbers.
@@ -661,6 +662,7 @@ export const AGENT_HOME_DIR: Readonly<Record<AgentId, readonly string[]>> = Obje
   "claude-code": [".claude"], codex: [".codex"], gemini: [".gemini"], qwen: [".qwen"], "copilot-cli": [".copilot"],
   vscode: [".vscode"], kiro: [".kiro"], zcode: [".zcode"], pi: [".pi"], opencode: [".config", "opencode"],
   omp: [".omp"], // ADR-0026: OMP data and plugins live under ~/.omp
+  openclaw: [".openclaw"], // OpenClaw state and plugins live under ~/.openclaw
 });
 export const UPGRADE_RESTART_LINE = "restart needed"; // impl/07 §6 step 8
 export const UPGRADE_HOST_AREA = "host update"; // impl/07 §6 step 4
@@ -782,6 +784,7 @@ export const HOOK_HOST_FILE: Readonly<Record<AgentId, {
   pi: null,
   opencode: null,
   omp: null, // ADR-0026: in-process, no hook file
+  openclaw: null, // in-process plugin, no hook file
 });
 export const TOOL_HOOK_EVENTS: readonly string[] = Object.freeze(["PreToolUse", "PostToolUse"]); // canonical events that carry the matcher
 export const HOOK_MATCHER_FIELD = "matcher";
@@ -874,6 +877,7 @@ export const UPGRADE_HOST_COMMAND: Readonly<Record<AgentId, string>> = Object.fr
   vscode: "npm i -g context-mode && context-mode setup --agents vscode",
   kiro: "npm i -g context-mode && context-mode setup --agents kiro",
   zcode: "npm i -g context-mode && context-mode setup --agents zcode",
+  openclaw: "openclaw plugins update context-mode", // OpenClaw plugin update; the exact subcommand is host-specific and unverified
 });
 // Old install forms, kept so uninstall and doctor still find and remove them (ADR-0011 Pi and OpenCode rows).
 export const PI_GIT_PACKAGE = "git:github.com/mksglu/context-mode@release"; // old Pi git entry (uninstall removes it)

@@ -56,6 +56,10 @@ export function hookSample(id: AgentId, cwd: string, text: string): HookSample {
     case "opencode":
       // D-R54-OC-REPLACE-1 (#1347): a replace row gets execute.after with the output the plugin passes on.
       return { effect, payload: { type: event, sessionID: SAMPLE_SESSION, directory: cwd, tool, args: command, ...(effect === "replace" ? { output: text } : {}) } };
+    case "openclaw":
+      // Same wire shape as the OpenCode plugin (type/tool/args/directory, result as `output`), with the OpenClaw
+      // `sessionId` key in place of `sessionID`.
+      return { effect, payload: { type: event, sessionId: SAMPLE_SESSION, directory: cwd, tool, args: command, ...(effect === "replace" ? { output: text } : {}) } };
     case "codex":
     case "qwen":
     case "vscode":

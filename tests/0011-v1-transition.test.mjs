@@ -438,6 +438,7 @@ describe("GP11: v1 migration setup plants detectable footprints", { concurrency:
     opencode: [V1_REASON.opencodePlugin],
     zcode: [V1_REASON.zcodeHook],
     omp: [V1_REASON.dataRoot], // ADR-0026: v1 OMP was MCP-only; only the shared content root
+    openclaw: [V1_REASON.dataRoot], // no detect-v1 switch case for openclaw (like omp): falls through to scanAll, reports only the shared ~/.context-mode/ content root
   };
 
   test("[M7] v1-migration-setup/own-agent-list-matches-AGENT_IDS", () => {

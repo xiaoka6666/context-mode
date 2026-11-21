@@ -161,5 +161,19 @@
       "sessionId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
       "cwd": "/tmp/project"
     }
+  },
+  "openclaw": {
+    "event": "PreToolUse",
+    "payload": {
+      "type": "execute.before",
+      "tool": "exec",
+      "sessionId": "openclaw-dddddd-dddd-dddd-dddd-dddddddddddd",
+      "callID": "call_dddddddd",
+      "args": {
+        "command": "echo gp3-fixture-probe",
+        "description": "Echo probe string"
+      },
+      "directory": "/tmp/project"
+    }
   }
 }

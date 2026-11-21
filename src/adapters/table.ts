@@ -14,6 +14,7 @@ import * as kiro from "./kiro.ts";
 import * as zcode from "./zcode.ts";
 import * as pi from "./pi.ts";
 import * as opencode from "./opencode.ts";
+import * as openclaw from "./openclaw.ts";
 
 const CLAUDE_EVENTS = { SessionStart: "SessionStart", UserPromptSubmit: "UserPromptSubmit", PreToolUse: "PreToolUse", PostToolUse: "PostToolUse" };
 const CLAUDE_TOOLS = { shell: ["Bash"], read: ["Read"], grep: ["Grep"], webfetch: ["WebFetch"], edit: ["Write", "Edit", "NotebookEdit"] };
@@ -122,6 +123,19 @@ export const ADAPTERS: readonly AdapterRow[] = Object.freeze([
     hookChannel: { kind: "in-process", path: "omp/index.js" }, skillChannel: { kind: "package", path: "skills" }, // D-OMP-SKILLS-1
     decode: pi.decodeOmp, encode: pi.encode, checkPermission: pi.checkPermission, // D-OMP-FIRE-1: agent omp in rows
   },
+  {
+    // OpenClaw runs its plugin entry in-process in the Gateway process, so the row mirrors the OpenCode one:
+    // bare ctx_* tool names, the entry's call-site event names, and the package's own skills dir.
+    id: "openclaw", installMode: "in-process", projectSource: "spawn-cwd", toolNamePrefix: openclaw.TOOL_NAME_PREFIX,
+    nativeTools: {
+      shell: [openclaw.EXEC_TOOL_NAME], read: [openclaw.READ_TOOL_NAME], webfetch: [openclaw.WEBFETCH_TOOL_NAME],
+      edit: [...openclaw.EDIT_TOOL_NAMES],
+    }, execReadOnlyHint: false,
+    eventMap: { SessionStart: "context", UserPromptSubmit: "prompt", PreToolUse: "execute.before", PostToolUse: "execute.after", PreCompact: "compaction", Usage: "step-finish" },
+    compactDelivery: "pending-flag", compactSummary: "none", hookTimeoutMs: IN_PROCESS_TIMEOUT_MS, denyChannel: "deny-reason",
+    hookChannel: { kind: "in-process", path: "openclaw/plugin.js" }, skillChannel: { kind: "package", path: "skills" },
+    decode: openclaw.decode, encode: openclaw.encode, toCanonicalTool: openclaw.toCanonicalTool,
+  },
 ] satisfies Row[]);
 
 const BY_ID = new Map<AgentId, AdapterRow>(ADAPTERS.map((r) => [r.id, r]));
@@ -132,7 +146,9 @@ const BY_ID = new Map<AgentId, AdapterRow>(ADAPTERS.map((r) => [r.id, r]));
 // gemini: AfterTool decision deny + reason replaces the result (D-HA-GEMINI-REPLACE-1).
 // opencode: the plugin sets result.content (2.x) or output.output (1.19) in-process; both hosts read that object back
 // after the hook (D-R54-OC-REPLACE-1, #1347). Not in DUMP_REPLACE_ROWS: execute.before can deny a large cat first.
-const REPLACE_ROWS: ReadonlySet<AgentId> = new Set<AgentId>(["claude-code", "gemini", "copilot-cli", "pi", "opencode", "omp"]); // omp: the Pi tool_result rewrite (ADR-0026)
+// openclaw: the plugin entry writes the encoded replace text back into the host's result object in-process, same
+// channel as OpenCode; execute.before can deny a large cat first too, so it stays out of DUMP_REPLACE_ROWS as well.
+const REPLACE_ROWS: ReadonlySet<AgentId> = new Set<AgentId>(["claude-code", "gemini", "copilot-cli", "pi", "opencode", "omp", "openclaw"]); // omp: the Pi tool_result rewrite (ADR-0026)
 
 export function hasReplace(row: AdapterRow): boolean {
   return REPLACE_ROWS.has(row.id);

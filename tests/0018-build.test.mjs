@@ -723,6 +723,7 @@ describe("ADR-0019 build: host skills", () => {
     pi: "ctx_stats",
     opencode: "ctx_stats",
     omp: SHARED_STATS, // D-OMP-SKILLS-1: <plugin>/skills, bare ctx_stats
+    openclaw: SHARED_STATS, // the package skills/ dir, shared with claude-code/gemini/qwen/omp; bare ctx_stats last
   };
 
   test("[D-N5-SKILL-1] the built package's ctx-stats skill names each host's real tool once, never a doubled prefix", () => {

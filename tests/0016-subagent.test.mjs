@@ -35,8 +35,20 @@ function posixWords(line) {
 }
 // Runs a printed `node ...` line in a real shell with `node` as a function that prints its arguments, one per line.
 // A $( ), a backtick or a $VAR the shell runs or expands shows up as a file or as changed terms.
+// win32: resolve a real Git Bash, not the WSL bash that `bash` may resolve to first (WindowsApps\bash.exe),
+// which does not run the `node() {...}` function form the same way (env-dependent, 0 openclaw refs). Probe the
+// standard Git for Windows install roots before falling back to PATH.
+function posixShell() {
+  if (process.platform !== "win32") return "sh";
+  for (const p of ["C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"]) {
+    if (existsSync(p)) return p;
+  }
+  const w = spawnSync("where.exe", ["bash"], { encoding: "utf8" });
+  const gitBash = (w.stdout || "").split("\n").map((s) => s.trim()).find((p) => p && !p.toLowerCase().includes("windowsapps"));
+  return gitBash ?? "bash";
+}
 function shellArgs(nodeLine, cwd) {
-  const sh = process.platform === "win32" ? "bash" : "sh";
+  const sh = posixShell();
   const r = spawnSync(sh, ["-c", "node() { for a in \"$@\"; do printf '%s\\n' \"$a\"; done; }; " + nodeLine], { cwd, encoding: "utf8", env: { PATH: process.env.PATH, HOME: cwd } });
   return { status: r.status, args: r.stdout.split("\n").slice(0, -1), stderr: r.stderr };
 }

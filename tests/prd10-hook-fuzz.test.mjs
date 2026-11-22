@@ -104,7 +104,8 @@ describe("PRD-v2 section 10: seeded hook fuzz on every host", () => {
     opencode: { keys: [{ event: "type", session: "sessionID", tool: "tool", input: "args", result: "output", prompt: "message", cwd: "directory" }], events: ["context", "prompt", "execute.before", "execute.after", "compaction", "step-finish"] },
   };
   SPEC.omp = SPEC.pi; // ADR-0026 (D-OMP-ROW-1): OMP sends the Pi wire
-  const PLAIN = new Set(["kiro", "pi", "opencode", "omp"]); // plain text hosts: deny by exit code 2 and text
+  SPEC.openclaw = SPEC.opencode; // the OpenClaw entry reads the OpenCode wire (type/sessionID/tool/args/output/message/directory)
+  const PLAIN = new Set(["kiro", "pi", "opencode", "omp", "openclaw"]); // plain text hosts: deny by exit code 2 and text
   const PRE_TOOL = new Set(["PreToolUse", "preToolUse", "BeforeTool", "tool_call", "execute.before"]);
 
   // Own ctx_* tool names on the wire of each host (what the host sends for this server's tools).

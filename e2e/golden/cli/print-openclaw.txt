@@ -17,4 +17,10 @@ and keep the rest. These paths are for this machine.)
   }
 }
 
+Hooks: add the hook block from `context-mode setup --print openclaw --json` to <HOME>/.openclaw/extensions/context-mode/index.ts
+(keep your own entries).
+
+Hooks: add the hook block from `context-mode setup --print openclaw --json` to <HOME>/.openclaw/extensions/context-mode/openclaw.plugin.json
+(keep your own entries).
+
 Then restart the agent and check it: context-mode doctor --agents openclaw

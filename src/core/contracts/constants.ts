@@ -658,6 +658,7 @@ export const PLUGIN_ROLLBACK_GENERATIONS = 1; // impl/07 §6 step 4d: one kept p
 export const RELEASE_SUMS_FILE = "SHA256SUMS"; // impl/07 §6 step 4b
 export const GIT_REMOTE_NAME = "origin";
 export const EXTENSIONS_DIR_NAME = "extensions"; // Gemini/Qwen: <agent home>/extensions/context-mode
+export const OPENCLAW_PLUGIN_MANIFEST = "openclaw.plugin.json"; // OpenClaw: ~/.openclaw/extensions/context-mode/<it> + index.ts
 // Agent home dir segments under $HOME (ADR-0011 table; impl/07 §3 `home`). VS Code is project scope (<project>/.vscode).
 export const AGENT_HOME_DIR: Readonly<Record<AgentId, readonly string[]>> = Object.freeze({
   "claude-code": [".claude"], codex: [".codex"], gemini: [".gemini"], qwen: [".qwen"], "copilot-cli": [".copilot"],

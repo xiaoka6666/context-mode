@@ -18,6 +18,7 @@ import * as kiro from "../src/adapters/kiro.ts";
 import * as zcode from "../src/adapters/zcode.ts";
 import * as pi from "../src/adapters/pi.ts";
 import * as opencode from "../src/adapters/opencode.ts";
+import * as openclaw from "../src/adapters/openclaw.ts";
 import { CLIENT_NAME_TO_PLATFORM } from "../src/core/contracts/client-map.ts";
 import { HOST_SHAPES, replyErrors, shapeErrors } from "../src/core/ops/hook-shape.ts";
 import { spawnSync } from "node:child_process";
@@ -56,6 +57,7 @@ describe("ADR-0020 adapters", () => {
       pi: ["in-process", "pi:ctx.cwd", "", "pi-flag", "none", 0, "deny-reason"],
       omp: ["in-process", "pi:ctx.cwd", "", "pi-flag", "none", 0, "deny-reason"], // ADR-0026 D-OMP-ROW-1
       opencode: ["in-process", "spawn-cwd", "", "opencode-cache", "none", 0, "deny-reason"],
+      openclaw: ["in-process", "spawn-cwd", "", "pending-flag", "none", 0, "deny-reason"], // mirrors the OpenCode row; the plugin ships in the package
     };
 
     const CLAUDE_NATIVE = { shell: ["Bash"], read: ["Read"], grep: ["Grep"], webfetch: ["WebFetch"], edit: ["Write", "Edit", "NotebookEdit"] };
@@ -73,6 +75,7 @@ describe("ADR-0020 adapters", () => {
       pi: { shell: ["bash", "powershell"], read: ["read"] }, // D-HA-PI-NAMES-1, D-R38-PI-PWSH-1
       omp: { shell: ["bash", "powershell"], read: ["read"] }, // ADR-0026: Pi tool names
       opencode: { shell: ["bash"], read: ["read"] }, // D-HF-OPENCODE-SHELL-1, D-R44-OC-READ-1
+      openclaw: { shell: ["exec"], read: ["read"], webfetch: ["web_fetch"], edit: ["write", "edit", "apply_patch"] }, // the gateway's own tool names
     };
 
     const CLAUDE_EVENTS = { SessionStart: "SessionStart", UserPromptSubmit: "UserPromptSubmit", PreToolUse: "PreToolUse", PostToolUse: "PostToolUse" };
@@ -90,9 +93,10 @@ describe("ADR-0020 adapters", () => {
       omp: { SessionStart: "session_start", UserPromptSubmit: "input", PreToolUse: "tool_call", PostToolUse: "tool_result" },
       // Usage: OpenCode step-finish cost row (DEVIATIONS D-M5-arch-2).
       opencode: { SessionStart: "context", UserPromptSubmit: "prompt", PreToolUse: "execute.before", PostToolUse: "execute.after", PreCompact: "compaction", Usage: "step-finish" },
+      openclaw: { SessionStart: "context", UserPromptSubmit: "prompt", PreToolUse: "execute.before", PostToolUse: "execute.after", PreCompact: "compaction", Usage: "step-finish" }, // the entry's own event names, as on OpenCode
     };
 
-    const MODULES = { "claude-code": claudeCode, codex, gemini, qwen, "copilot-cli": copilotCli, vscode, kiro, zcode, pi, opencode };
+    const MODULES = { "claude-code": claudeCode, codex, gemini, qwen, "copilot-cli": copilotCli, vscode, kiro, zcode, pi, opencode, openclaw };
 
     test("ADAPTERS has one row per AgentId, in AGENT_IDS order (impl/10 §1.2, §1.3)", () => {
       assert.deepEqual(ADAPTERS.map((r) => r.id), [...AGENT_IDS]);
@@ -270,6 +274,7 @@ describe("ADR-0020 adapters", () => {
       pi: { kind: "in-process", path: "pi/index.js" },
       omp: { kind: "in-process", path: "omp/index.js" },
       opencode: { kind: "in-process", path: "opencode/plugin.js" },
+      openclaw: { kind: "in-process", path: "openclaw/plugin.js" },
     };
     const SKILL_CHANNEL = {
       "claude-code": { kind: "package", path: "skills" }, // D-R33-CC-SKILLS-1: shared with gemini and qwen
@@ -283,6 +288,7 @@ describe("ADR-0020 adapters", () => {
       pi: { kind: "package", path: "pi/skills" },
       omp: { kind: "package", path: "skills" }, // D-OMP-SKILLS-1
       opencode: { kind: "home-dir", path: ".config/opencode/skills" },
+      openclaw: { kind: "package", path: "skills" }, // the package ships the plugin entry and its skills
     };
 
     test("every row has a hookChannel and a skillChannel with a non-empty path (ADR-0020, no exception rows)", () => {
@@ -341,6 +347,7 @@ describe("ADR-0020 adapters", () => {
         pi: ["in-process", "pi:ctx.cwd", "", "pi-flag", "none", "deny-reason"],
         omp: ["in-process", "pi:ctx.cwd", "", "pi-flag", "none", "deny-reason"],
         opencode: ["in-process", "spawn-cwd", "", "opencode-cache", "none", "deny-reason"],
+        openclaw: ["in-process", "spawn-cwd", "", "pending-flag", "none", "deny-reason"],
       };
       for (const r of ADAPTERS) {
         assert.deepEqual(

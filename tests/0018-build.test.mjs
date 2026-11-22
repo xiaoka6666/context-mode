@@ -949,7 +949,8 @@ describe("ADR-0019 build: npm package", () => {
 
   test("[M7] build/npm-pack-equals-sums: npm pack file list and sha256 equal SHA256SUMS (plus SHA256SUMS itself)", () => {
     const dest = path.join(scratch, "pack");
-    const p = spawnSync(NPM, ["pack", "--json", "--pack-destination", (spawnSync("mkdir", ["-p", dest]), dest)], { cwd: out, encoding: "utf8", shell: process.platform === "win32" });
+    mkdirSync(dest, { recursive: true });
+    const p = spawnSync(NPM, ["pack", "--json", "--pack-destination", dest], { cwd: out, encoding: "utf8", shell: process.platform === "win32" });
     assert.equal(p.status, 0, p.stderr);
     const [info] = JSON.parse(p.stdout);
     assert.equal(info.name, "context-mode");
@@ -958,7 +959,7 @@ describe("ADR-0019 build: npm package", () => {
     const expected = [...sums().map(([n]) => n), "SHA256SUMS"].sort();
     assert.deepEqual(listed, expected);
     const ex = path.join(scratch, "x");
-    spawnSync("mkdir", ["-p", ex]);
+    mkdirSync(ex, { recursive: true });
     const t = spawnSync("tar", ["-xzf", path.join(dest, info.filename), "-C", ex], { encoding: "utf8" });
     assert.equal(t.status, 0, t.stderr);
     for (const [rel, hex] of sums()) {

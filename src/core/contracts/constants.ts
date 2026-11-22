@@ -751,8 +751,6 @@ export const UNSUPPORTED_HOSTS: readonly UnsupportedHost[] = Object.freeze([
     configDirs: [".gemini/antigravity", ".gemini/antigravity-cli", ".gemini/config"], binaries: ["agy"], source: "v1.0.169:src/adapters/client-map.ts:15-17; detect.ts:156,481-483; #1340" }),
   unsupported({ id: "cursor", name: "Cursor", clientNames: ["cursor-vscode"], envVars: ["CURSOR_TRACE_ID", "CURSOR_CLI", "CURSOR_CWD"],
     pluginPaths: [], configDirs: [".cursor"], binaries: [], source: "v1.0.169:src/adapters/client-map.ts:18; detect.ts:163-165,584" }),
-  unsupported({ id: "openclaw", name: "OpenClaw", clientNames: [], envVars: [],
-    pluginPaths: [], configDirs: [".openclaw"], binaries: [], source: "v1.0.169:src/adapters/detect.ts:252,575 (the runtime sets no env var)" }),
   unsupported({ id: "kimi", name: "Kimi Code", clientNames: ["kimi-code", "kimi"], envVars: [],
     pluginPaths: [], configDirs: [".kimi-code"], binaries: ["kimi"], source: "v1.0.169:src/adapters/client-map.ts:42-44; detect.ts:567; adapters/kimi/index.ts:127" }),
   unsupported({ id: "kilo", name: "Kilo Code", clientNames: ["kilo code"], envVars: ["KILO", "KILO_PID"],
@@ -1066,6 +1064,7 @@ export const CODEX_APPROVAL_MODE_FIELD = "default_tools_approval_mode";
 export const CODEX_APPROVAL_APPROVE = "approve";
 export const OWN_MCP_ENTRY: Readonly<Partial<Record<AgentId, OwnMcpEntry>>> = Object.freeze({
   codex: { file: [".codex", "config.toml"], key: ["mcp_servers", SERVER_KEY], fields: { [CODEX_OMIT_TOOLS_FROM_FIELD]: CODEX_OMIT_DEFERRED, [CODEX_APPROVAL_MODE_FIELD]: CODEX_APPROVAL_APPROVE } },
+  openclaw: { file: [".openclaw", "openclaw.json"], key: ["mcp", "servers", SERVER_KEY] }, // the gateway reads mcp.servers; the plugin entry adds the in-process ctx_* tools
   vscode: { file: [VSCODE_MCP_FILE], key: ["servers", SERVER_KEY] },
   kiro: { file: [".kiro", "settings", "mcp.json"], key: ["mcpServers", SERVER_KEY] },
   zcode: {

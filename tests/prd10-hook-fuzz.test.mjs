@@ -12,7 +12,7 @@ import { REGRESSIONS } from "./_lib/hook-fuzz-regressions.mjs";
 
 describe("PRD-v2 section 10: seeded hook fuzz on every host", () => {
   // Property test for the built hook bundle (owner decision 2026-10-29: a hook never errors).
-  // For each of the 11 hosts: seeded random payloads plus named regression cases are piped into release-out/hook.mjs
+  // For each of the 12 hosts: seeded random payloads plus named regression cases are piped into release-out/hook.mjs
   // (a fresh child per case, temp HOME). Invariants per call:
   //   1. the process exits 0 (kiro, pi and opencode may exit 2 only for a deny that carries its reason text);
   //   2. stdout is empty or in the documented shape of that host (JSON object with the host's keys, or plain text

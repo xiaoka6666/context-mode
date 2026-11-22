@@ -21,6 +21,7 @@ body:
         - pi
         - opencode
         - omp
+        - openclaw
     validations:
       required: true
   - type: textarea

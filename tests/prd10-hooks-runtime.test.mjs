@@ -3100,7 +3100,7 @@ describe("PRD-v2 section 10: host tool names in hook output", () => {
     event: "PreToolUse", agent: row.id, sessionId: "s1", cwd, tool: { name, canonicalName, input },
   });
 
-  test("all 11 hosts: the Read deny names <prefix>ctx_execute", () => {
+  test("all 12 hosts: the Read deny names <prefix>ctx_execute", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cm-names-"));
     try {
       const big = path.join(dir, "big.log");
@@ -3118,7 +3118,7 @@ describe("PRD-v2 section 10: host tool names in hook output", () => {
     }
   });
 
-  test("all 11 hosts: parse-error and policy-unreadable denies name <prefix>ctx_*", () => {
+  test("all 12 hosts: parse-error and policy-unreadable denies name <prefix>ctx_*", () => {
     const old = process.env[REQUIRE_SECURITY_ENV];
     try {
       for (const row of ADAPTERS) {

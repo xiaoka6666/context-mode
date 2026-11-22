@@ -1,6 +1,6 @@
 # Install context-mode v2
 
-context-mode supports 11 agents. Use your agent's own install command. Each line below is the native command, then the native update command. After it, run the check: `context-mode doctor`.
+context-mode supports 12 agents. Use your agent's own install command. Each line below is the native command, then the native update command. After it, run the check: `context-mode doctor`.
 
 The agents with no install command of their own use the npm route: `npm i -g context-mode`, then `context-mode setup`.
 
@@ -20,6 +20,7 @@ The agents with no install command of their own use the npm route: `npm i -g con
 | Qwen Code | `qwen extensions install https://github.com/mksglu/context-mode:context-mode` | `qwen extensions update context-mode` |
 | Pi | `pi install npm:context-mode` | `pi update --extensions` |
 | OMP | `omp plugin install context-mode` | `omp plugin upgrade context-mode` |
+| OpenClaw | `npm i -g context-mode`, then `context-mode setup --agents openclaw` | `context-mode upgrade` |
 | OpenCode | `opencode plugin add context-mode` (1.19: `opencode plugin context-mode --global`) | `opencode plugin update` (1.19: `opencode plugin context-mode --global --force`) |
 | ZCode | `zcode plugins marketplace add mksglu/context-mode`, then `zcode plugins install context-mode@context-mode` | `zcode plugins update context-mode@context-mode` |
 | Copilot CLI, Kiro, VS Code | `npm i -g context-mode`, then `context-mode setup --agents <id>` | `context-mode upgrade` |

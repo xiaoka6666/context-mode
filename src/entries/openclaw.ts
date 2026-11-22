@@ -95,7 +95,7 @@ export interface OpenClawContextEngine {
   compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ok: boolean; compacted: boolean }>;
   /** Passthrough: context-mode does not store per-message context; the host keeps its own transcript. */
   ingest(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ingested: boolean }>;
-  /** Passthrough: return the supplied messages unchanged; truncation stays with the host (ownsCompaction: false). */
+  /** Passthrough: return the supplied messages unchanged; cutting them down stays with the host (ownsCompaction: false). */
   assemble(params?: { messages?: unknown[]; [k: string]: unknown }): Promise<{ messages: unknown[]; estimatedTokens: number }>;
   /** Durable outbox commit (host "atomic-idempotent-v1"): the host retries the same advancement key after
    *  a process or plugin failure; first sight answers "committed", every retry "duplicate". */

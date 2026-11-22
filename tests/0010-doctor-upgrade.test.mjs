@@ -2687,7 +2687,7 @@ describe("ADR-0010 doctor: hook-runs check per agent (GP11)", { concurrency: CON
     return { home, env, reg: buildRegistry({ home, pkgDir, env }) };
   }
 
-  test("H5: doctor hook-runs PASSES on all 11 hosts with the real hook: the large shell read gets the saving effect", (t) => {
+  test("H5: doctor hook-runs PASSES on all 12 hosts with the real hook: the large shell read gets the saving effect", (t) => {
     const s = sandbox(t, REAL_HOOK);
     assert.equal(s.reg.length, ADAPTERS.length);
     assert.equal(s.reg.length, 11); // ADR-0026: omp is the 11th row
@@ -2865,7 +2865,7 @@ createInterface({ input: process.stdin }).on("line", (l) => {
     assert.equal(readFileSync(toml, "utf8").includes(tomlBefore.slice(tomlBefore.indexOf("[mcp_servers.context-mode.tools"))), true);
   });
 
-  test("[D-DOC-RT-1] all 11 hosts: after setup, D4 is clean and D3 names no MCP entry for a host whose entry setup wrote", async (t) => {
+  test("[D-DOC-RT-1] all 12 hosts: after setup, D4 is clean and D3 names no MCP entry for a host whose entry setup wrote", async (t) => {
     const s = sandbox(t);
     mkdirSync(s.tmp, { recursive: true });
     const res = await runSetup({ home: s.home, pkgDir: s.pkgDir, env: s.env, agents: FILE_HOSTS, runId: "r1" });

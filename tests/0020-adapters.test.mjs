@@ -127,7 +127,7 @@ describe("ADR-0020 adapters", () => {
       for (const [id, mod] of Object.entries(MODULES)) assert.equal(getAdapter(id).toolNamePrefix, mod.TOOL_NAME_PREFIX, id);
     });
 
-    test("all 11 adapters are wired to their own decode/encode (no not-built stub); omp uses the Pi pair", () => {
+    test("all 12 adapters are wired to their own decode/encode (no not-built stub); omp uses the Pi pair", () => {
       for (const [id, mod] of Object.entries({ ...MODULES, omp: { decode: pi.decodeOmp, encode: pi.encode } })) {
         const r = getAdapter(id);
         assert.equal(r.decode, mod.decode, id + " decode");

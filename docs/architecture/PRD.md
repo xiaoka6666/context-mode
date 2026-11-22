@@ -32,7 +32,7 @@ Current outcome counts, from `https://github.com/mksglu/context-mode/blob/274600
 
 ## 3. Agents and architecture
 
-context-mode supports 11 agents (TECH-SPEC §2); OMP is the 11th (ADR-0026):
+context-mode supports 12 agents (TECH-SPEC §2); OMP is the 11th (ADR-0026), OpenClaw the 12th:
 
 | Agent | Install mode |
 |---|---|
@@ -47,6 +47,7 @@ context-mode supports 11 agents (TECH-SPEC §2); OMP is the 11th (ADR-0026):
 | Pi | in-process plugin |
 | OpenCode 2 | in-process plugin |
 | OMP | in-process plugin |
+| OpenClaw | in-process plugin |
 
 No other agent ships in v2.0. No CLI and no `cli.mjs` entry (ADR-0002, ADR-0010): install, update and diagnosis run through each host's own mechanism and through the `ctx_doctor`/`ctx_upgrade` tools.
 

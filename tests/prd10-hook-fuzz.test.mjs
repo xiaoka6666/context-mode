@@ -12,7 +12,7 @@ import { REGRESSIONS } from "./_lib/hook-fuzz-regressions.mjs";
 
 describe("PRD-v2 section 10: seeded hook fuzz on every host", () => {
   // Property test for the built hook bundle (owner decision 2026-10-29: a hook never errors).
-  // For each of the 11 hosts: seeded random payloads plus named regression cases are piped into release-out/hook.mjs
+  // For each of the 12 hosts: seeded random payloads plus named regression cases are piped into release-out/hook.mjs
   // (a fresh child per case, temp HOME). Invariants per call:
   //   1. the process exits 0 (kiro, pi and opencode may exit 2 only for a deny that carries its reason text);
   //   2. stdout is empty or in the documented shape of that host (JSON object with the host's keys, or plain text
@@ -104,7 +104,8 @@ describe("PRD-v2 section 10: seeded hook fuzz on every host", () => {
     opencode: { keys: [{ event: "type", session: "sessionID", tool: "tool", input: "args", result: "output", prompt: "message", cwd: "directory" }], events: ["context", "prompt", "execute.before", "execute.after", "compaction", "step-finish"] },
   };
   SPEC.omp = SPEC.pi; // ADR-0026 (D-OMP-ROW-1): OMP sends the Pi wire
-  const PLAIN = new Set(["kiro", "pi", "opencode", "omp"]); // plain text hosts: deny by exit code 2 and text
+  SPEC.openclaw = SPEC.opencode; // the OpenClaw entry reads the OpenCode wire (type/sessionID/tool/args/output/message/directory)
+  const PLAIN = new Set(["kiro", "pi", "opencode", "omp", "openclaw"]); // plain text hosts: deny by exit code 2 and text
   const PRE_TOOL = new Set(["PreToolUse", "preToolUse", "BeforeTool", "tool_call", "execute.before"]);
 
   // Own ctx_* tool names on the wire of each host (what the host sends for this server's tools).

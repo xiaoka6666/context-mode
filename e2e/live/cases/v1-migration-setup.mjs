@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /** The 11 agent ids (literal copy; GS4 forbids importing src/core/contracts/agents.ts). */
-export const AGENT_IDS = Object.freeze(["claude-code", "codex", "gemini", "qwen", "copilot-cli", "vscode", "kiro", "zcode", "pi", "opencode", "omp"]);
+export const AGENT_IDS = Object.freeze(["claude-code", "codex", "gemini", "qwen", "copilot-cli", "vscode", "kiro", "zcode", "pi", "opencode", "omp", "openclaw"]);
 
 const BIN = "context-mode"; // v1 global npm bin name
 const PROJECT_DIR = "project"; // <home>/project: the workspace for VS Code / Kiro project-scope files
@@ -147,6 +147,11 @@ const PLANT = {
   },  // ADR-0026 History: v1 OMP was MCP-only and wrote no hook or data dir of its own; its v1 footprint is the
   // shared fake global bin and ~/.context-mode/ content that plantV1Install adds for every agent.
   omp() {},
+  openclaw(home) {
+    const dir = path.join(home, ".openclaw");
+    put(path.join(dir, "openclaw.json"), json({ mcpServers: { [BIN]: { command: BIN, args: ["mcp"] } } }));
+    dataDir(path.join(dir, "context-mode"));
+  },
 };
 
 /**

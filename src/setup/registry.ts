@@ -5,7 +5,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import { ADAPTERS, getAdapter } from "../adapters/table.ts";
-import { AGENT_HOME_DIR, PLUGIN_MARKETPLACE_NAME, HOST_NODE_COMMAND, HOST_PLUGINS_DIR_NAME, INSTALLED_PLUGINS_FILE, MCP_ENV_FIELD, OPENCODE_BASE_CONFIG_FILE, OWN_MCP_ENTRY, SERVER_KEY, SETUP_BACKUP_DIR_NAME, TOOL_ORDER } from "../core/contracts/constants.ts";
+import { AGENT_HOME_DIR, EXTENSIONS_DIR_NAME, OPENCLAW_PLUGIN_MANIFEST, PLUGIN_MARKETPLACE_NAME, HOST_NODE_COMMAND, HOST_PLUGINS_DIR_NAME, INSTALLED_PLUGINS_FILE, MCP_ENV_FIELD, OPENCODE_BASE_CONFIG_FILE, OWN_MCP_ENTRY, SERVER_KEY, SETUP_BACKUP_DIR_NAME, TOOL_ORDER } from "../core/contracts/constants.ts";
 import type { AgentId, AdapterRow, HostConfigFormat } from "../core/contracts/types.ts";
 import { claudeDirOf, claudeProfileEnv, copilotDirOf, geminiDirOf, kiroDirOf, opencodeDirOf, ownMcpFileOf } from "../core/project/config-dir.ts";
 import { ownMcpValue } from "../core/ops/host-config.ts";
@@ -49,6 +49,7 @@ export interface HookFile { file: string; mode: "rewrite" | "drop"; }
 export type HookInstall =
   | { kind: "file"; file: string; shape: JsonObject; command: string; trust?: string }
   | { kind: "plugin-list"; file: string; key: readonly string[]; entry: string; worktree: string }
+  | { kind: "plugin-dir"; dir: string; files: { file: string; content: string }[] }
   | { kind: "package"; via: string };
 
 /** ADR-0020: the one skill channel. dir = setup writes <dir>/<name>/SKILL.md rendered with the agent's tool name
@@ -303,7 +304,34 @@ function hookInstallFor(ctx: SetupContext, row: AdapterRow, command: string): Ho
       worktree: ctx.cwd ?? process.cwd(), // D-R54-OC-PLUGINS-DIR-1: <project>/.opencode/plugins
       entry: ctx.pkgDir }; // D-OC2-ENTRY-1: the package dir loads on OpenCode 1.19.5 and 2.2.x (2.x rejects a file path: "configured plugin path must be a directory"); the host turns an absolute or drive-letter path into a file URL itself (D-WIN-OCENTRY-1)
   }
+  if (row.id === "openclaw") {
+    // OpenClaw loads the plugin from ~/.openclaw/extensions/context-mode/: an index.ts that re-exports the
+    // installed package's openclaw/plugin.js, plus the manifest naming the ctx_* tools (contracts.tools).
+    const dir = path.join(agentPath(ctx, "openclaw", [...AGENT_HOME_DIR.openclaw, EXTENSIONS_DIR_NAME, SERVER_KEY]));
+    return {
+      kind: "plugin-dir", dir,
+      files: [
+        { file: path.join(dir, "index.ts"), content: `export { default } from ${JSON.stringify(path.join(ctx.pkgDir, "openclaw", "plugin.js"))};\n` },
+        { file: path.join(dir, OPENCLAW_PLUGIN_MANIFEST), content: openclawPluginManifest() },
+      ],
+    };
+  }
   return { kind: "package", via: ch.path };
+}
+
+/** The OpenClaw plugin manifest setup writes next to the extension entry: id/name/kind plus contracts.tools,
+ *  the bare ctx_* names from TOOL_ORDER (the entry registers them under their bare names, prefix ""). */
+function openclawPluginManifest(): string {
+  const manifest = {
+    id: SERVER_KEY,
+    name: "Context Mode",
+    kind: "tool",
+    description: "Context window saver: sandboxed code execution, FTS5 search and session continuity.",
+    sandbox: { mode: "permissive", filesystem_access: "full", system_access: "full" },
+    configSchema: { type: "object", properties: { enabled: { type: "boolean", default: true } }, additionalProperties: false },
+    contracts: { tools: [...TOOL_ORDER] },
+  };
+  return JSON.stringify(manifest, null, 2) + "\n";
 }
 
 /** D-N5-SKILL-1: the shipped skill dir that holds the bare ctx_* names (a package channel with prefix ""). The
@@ -343,7 +371,7 @@ export function buildRegistry(ctx: SetupContext): CheckRow[] {
     const writes = [
       ...(copilotSettings ? [copilotSettings] : []),
       ...(config ? [config.file] : []), ...hookFiles.map((h) => h.file),
-      ...(hookInstall.kind === "package" ? [] : [hookInstall.file]),
+      ...(hookInstall.kind === "package" ? [] : hookInstall.kind === "plugin-dir" ? hookInstall.files.map((f) => f.file) : [hookInstall.file]),
       ...(hookInstall.kind === "file" && hookInstall.trust ? [hookInstall.trust] : []),
       ...(skillInstall.kind === "dir" ? skillInstall.files.map((f) => f.file) : []),
       ...(id === "omp" ? [ompImportFiles(ctx.env, ctx.home).mcp] : []), // ADR-0026 decision 11: disabledServers, only when OMP imports us

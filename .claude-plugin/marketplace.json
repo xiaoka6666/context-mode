@@ -10,7 +10,7 @@
         "name": "Mert Koseoglu",
         "url": "https://github.com/mksglu/context-mode#readme"
       },
-      "description": "Context window saver for 11 coding agents. Local and free: sandboxed code execution, FTS5 search, session continuity.",
+      "description": "Context window saver for 12 coding agents. Local and free: sandboxed code execution, FTS5 search, session continuity.",
       "name": "context-mode",
       "source": "./plugins/claude-code",
       "version": "2.2.2",
@@ -26,6 +26,7 @@
         "kiro",
         "zcode",
         "omp",
+        "openclaw",
         "mcp",
         "context-window",
         "sandbox",

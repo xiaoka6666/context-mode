@@ -449,7 +449,7 @@ describe("ADR-0018 build: manifests", () => {
   // no scripts, no private.
   const D1_FILES = [
     ".claude-plugin", ".codex-plugin", ".zcode-plugin", "LICENSE", "README.md", "SHA256SUMS", "cli.mjs", "codex", "copilot", "fixtures", "gemini-extension.json", "hook.mjs", "hooks",
-    "omp", "opencode", "pi", "qwen-extension.json", "run.mjs", "search.mjs", "server.mjs", "skills",
+    "omp", "openclaw", "opencode", "pi", "qwen-extension.json", "run.mjs", "search.mjs", "server.mjs", "skills",
   ];
   test("package.json is the D1 npm shape: name, version, bin, type, engines, files, pi (extensions, skills)", (t) => {
     const dir = scratch(t);
@@ -723,6 +723,7 @@ describe("ADR-0019 build: host skills", () => {
     pi: "ctx_stats",
     opencode: "ctx_stats",
     omp: SHARED_STATS, // D-OMP-SKILLS-1: <plugin>/skills, bare ctx_stats
+    openclaw: SHARED_STATS, // the package skills/ dir, shared with claude-code/gemini/qwen/omp; bare ctx_stats last
   };
 
   test("[D-N5-SKILL-1] the built package's ctx-stats skill names each host's real tool once, never a doubled prefix", () => {
@@ -948,7 +949,8 @@ describe("ADR-0019 build: npm package", () => {
 
   test("[M7] build/npm-pack-equals-sums: npm pack file list and sha256 equal SHA256SUMS (plus SHA256SUMS itself)", () => {
     const dest = path.join(scratch, "pack");
-    const p = spawnSync(NPM, ["pack", "--json", "--pack-destination", (spawnSync("mkdir", ["-p", dest]), dest)], { cwd: out, encoding: "utf8", shell: process.platform === "win32" });
+    mkdirSync(dest, { recursive: true });
+    const p = spawnSync(NPM, ["pack", "--json", "--pack-destination", dest], { cwd: out, encoding: "utf8", shell: process.platform === "win32" });
     assert.equal(p.status, 0, p.stderr);
     const [info] = JSON.parse(p.stdout);
     assert.equal(info.name, "context-mode");
@@ -957,7 +959,7 @@ describe("ADR-0019 build: npm package", () => {
     const expected = [...sums().map(([n]) => n), "SHA256SUMS"].sort();
     assert.deepEqual(listed, expected);
     const ex = path.join(scratch, "x");
-    spawnSync("mkdir", ["-p", ex]);
+    mkdirSync(ex, { recursive: true });
     const t = spawnSync("tar", ["-xzf", path.join(dest, info.filename), "-C", ex], { encoding: "utf8" });
     assert.equal(t.status, 0, t.stderr);
     for (const [rel, hex] of sums()) {

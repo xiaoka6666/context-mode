@@ -1,0 +1,23 @@
+{
+  "host": "openclaw",
+  "source": "OpenClaw in-process plugin (src/entries/openclaw.ts): the entry reads the encoded HookOutput directly (plain stdout, exit 2 blocks the tool call), so the reply is plain text, as on the OpenCode plugin.",
+  "stdout": "text",
+  "output": {
+    "PreToolUse": {
+      "type": "string",
+      "description": "plain text read by src/entries/openclaw.ts"
+    },
+    "PostToolUse": {
+      "type": "string",
+      "description": "plain text read by src/entries/openclaw.ts"
+    },
+    "UserPromptSubmit": {
+      "type": "string",
+      "description": "plain text read by src/entries/openclaw.ts"
+    },
+    "SessionStart": {
+      "type": "string",
+      "description": "plain text read by src/entries/openclaw.ts"
+    }
+  }
+}

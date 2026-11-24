@@ -22,9 +22,21 @@ export function bundleDirOf(argv1: string, moduleFile: string): string {
 }
 
 let memo: { argv1: string; dir: string } | undefined;
+let pinnedDir: string | undefined;
+
+/** Pin the bundle dir for the running host. An in-process plugin host (OpenClaw's gateway) starts with
+ *  argv[1] set to the host's own script, and the plugin shim that loads this bundle is not an ancestor
+ *  of it, so bundleDirOf's walk-up falls back to the host's dist dir: doctor's D5 then looks for
+ *  fixtures/hook-roundtrip.json and hook.mjs in the host's dist and reports the fixture absent. The
+ *  entry module pins the nearest ancestor of its OWN file that holds SERVER_ENTRY_FILE (the release
+ *  bundle root). A no-op for hosts that already resolve their dir from argv[1]. */
+export function pinOwnBundleDir(dir: string): void {
+  pinnedDir = dir;
+}
 
 /** bundleDirOf for this process, kept per argv[1] (tests set argv[1] to a fake bundle). */
 export function ownBundleDir(): string {
+  if (pinnedDir !== undefined) return pinnedDir;
   const argv1 = process.argv[1] ?? "";
   if (memo?.argv1 !== argv1) memo = { argv1, dir: bundleDirOf(argv1, fileURLToPath(import.meta.url)) };
   return memo.dir;

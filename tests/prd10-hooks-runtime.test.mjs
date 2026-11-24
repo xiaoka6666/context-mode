@@ -2562,7 +2562,7 @@ describe("PRD-v2 section 10: saving decision per host (ADR-0020)", () => {
   // the ctx tool on PreToolUse everywhere else. One effect per host, no fallback.
   const SAVING = {
     "claude-code": "R", codex: "D", gemini: "R", qwen: "D", "copilot-cli": "R",
-    vscode: "D", kiro: "D", zcode: "D", pi: "R", opencode: "R", omp: "R", // omp R: Pi tool_result rewrite (ADR-0026); opencode R: D-R54-OC-REPLACE-1 (#1347)
+    vscode: "D", kiro: "D", zcode: "D", pi: "R", opencode: "R", omp: "R", openclaw: "R", // omp R: Pi tool_result rewrite (ADR-0026); opencode R: D-R54-OC-REPLACE-1 (#1347); openclaw R: the plugin entry writes the replace back in-process, same as OpenCode
   };
   // D-M3-F-9: a hook or detached write keeps its DB handle open by design (A21), and Windows cannot delete
   // an open file, so temp cleanup there is best-effort. The assertions are unchanged.
@@ -3100,12 +3100,12 @@ describe("PRD-v2 section 10: host tool names in hook output", () => {
     event: "PreToolUse", agent: row.id, sessionId: "s1", cwd, tool: { name, canonicalName, input },
   });
 
-  test("all 11 hosts: the Read deny names <prefix>ctx_execute", () => {
+  test("all 12 hosts: the Read deny names <prefix>ctx_execute", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cm-names-"));
     try {
       const big = path.join(dir, "big.log");
       writeFileSync(big, "x".repeat(300 * 1024));
-      assert.equal(ADAPTERS.length, 11); // ADR-0026 T18: omp is the 11th row
+      assert.equal(ADAPTERS.length, 12); // ADR-0026 T18: omp is the 11th row; openclaw the 12th
       for (const row of ADAPTERS) {
         const d = decide(ev(row, dir, "Read", "Read", { file_path: big }), row, []);
         assert.equal(d.kind, "deny", row.id);
@@ -3118,7 +3118,7 @@ describe("PRD-v2 section 10: host tool names in hook output", () => {
     }
   });
 
-  test("all 11 hosts: parse-error and policy-unreadable denies name <prefix>ctx_*", () => {
+  test("all 12 hosts: parse-error and policy-unreadable denies name <prefix>ctx_*", () => {
     const old = process.env[REQUIRE_SECURITY_ENV];
     try {
       for (const row of ADAPTERS) {

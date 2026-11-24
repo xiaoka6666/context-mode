@@ -1080,7 +1080,7 @@ describe("ADR-0015 repo: README agent lines", () => {
 
   test("readme-agents: every host row says it has hooks, from its hookChannel in table.ts", () => {
     const rows = agentRows();
-    assert.equal(rows.length, 11); // omp is the 11th (ADR-0026 M8, D-OMP-DOCS-1)
+    assert.equal(rows.length, 12); // omp is the 11th (ADR-0026 M8, D-OMP-DOCS-1); openclaw the 12th
     for (const r of rows) {
       const a = ADAPTERS.find((x) => x.id === r.id);
       assert.ok(a.hookChannel, `${r.id} has a hookChannel`);

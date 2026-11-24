@@ -120,11 +120,11 @@ const ALLOWED_DIRS = [
   MAIN_TREE_PLUGIN_DIR,
 ];
 const ALLOWED_FILES = [
-  // The 11 adapter files (impl/00 §1).
+  // The 12 adapter files (impl/00 §1).
   "src/adapters/table.ts",
   "src/adapters/claude-code.ts", "src/adapters/codex.ts", "src/adapters/gemini.ts", "src/adapters/qwen.ts",
   "src/adapters/copilot-cli.ts", "src/adapters/vscode.ts", "src/adapters/kiro.ts", "src/adapters/zcode.ts",
-  "src/adapters/pi.ts", "src/adapters/opencode.ts",
+  "src/adapters/pi.ts", "src/adapters/opencode.ts", "src/adapters/openclaw.ts",
   // The 3 command skills and the release skill (GS5).
   ...ALLOWED_SKILL_FILES,
   ".claude/settings.json",

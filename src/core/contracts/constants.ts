@@ -218,6 +218,7 @@ export const HOST_SESSION_META: Readonly<Partial<Record<string, string>>> = Obje
 export const NODE_MIN = "24.15.0"; // S-NODE
 export const DATA_ROOT = "~/.context-mode"; // PRD §4; the store module expands "~"
 export const DATA_DIR_ENV = "CONTEXT_MODE_DATA_DIR"; // #1318 D-DATA-DIR-ENV-1: set and not empty, it replaces DATA_ROOT for every read and write
+export const BUNDLE_DIR_ENV = "CONTEXT_MODE_BUNDLE_DIR"; // in-process host shims whose loader rewrites import.meta.url (OpenClaw's gateway TS extension loader) pin the release bundle root (the dir holding server.mjs); the entry validates it
 export const INTERNAL_ERROR_LINE = "Internal error. Fix: run ctx_doctor."; // impl/11 §5 step 7d, §7 table
 export const REQUIRE_SECURITY_ENV = "CONTEXT_MODE_REQUIRE_SECURITY"; // v1 issue #468; DECISIONS-r9 E2
 
@@ -400,7 +401,8 @@ const READ_IMAGES_AND_PDF: readonly ReadMediaType[] = Object.freeze([...READ_IMA
  *  A host with no checked media path keeps the size deny for every file. */
 export const READ_MEDIA_BY_AGENT: Readonly<Record<AgentId, readonly ReadMediaType[]>> = Object.freeze({
   "claude-code": READ_IMAGES_AND_PDF, gemini: READ_IMAGES_AND_PDF, qwen: READ_IMAGES_AND_PDF, opencode: READ_IMAGES_AND_PDF,
-  pi: READ_IMAGES, omp: READ_IMAGES, vscode: READ_IMAGES, zcode: READ_IMAGES, "copilot-cli": [], codex: [], kiro: [],
+  pi: READ_IMAGES, omp: READ_IMAGES, vscode: READ_IMAGES, zcode: READ_IMAGES, openclaw: READ_IMAGES, // OpenClaw read: jpg/png/gif/webp/bmp blocks, no PDF
+  "copilot-cli": [], codex: [], kiro: [],
 });
 
 // impl/09 §4 hooks dispatch (DEVIATIONS D-M3-H2-1..6). Keys and texts the dispatch reads; no numbers.
@@ -656,11 +658,13 @@ export const PLUGIN_ROLLBACK_GENERATIONS = 1; // impl/07 §6 step 4d: one kept p
 export const RELEASE_SUMS_FILE = "SHA256SUMS"; // impl/07 §6 step 4b
 export const GIT_REMOTE_NAME = "origin";
 export const EXTENSIONS_DIR_NAME = "extensions"; // Gemini/Qwen: <agent home>/extensions/context-mode
+export const OPENCLAW_PLUGIN_MANIFEST = "openclaw.plugin.json"; // OpenClaw: ~/.openclaw/extensions/context-mode/<it> + index.ts
 // Agent home dir segments under $HOME (ADR-0011 table; impl/07 §3 `home`). VS Code is project scope (<project>/.vscode).
 export const AGENT_HOME_DIR: Readonly<Record<AgentId, readonly string[]>> = Object.freeze({
   "claude-code": [".claude"], codex: [".codex"], gemini: [".gemini"], qwen: [".qwen"], "copilot-cli": [".copilot"],
   vscode: [".vscode"], kiro: [".kiro"], zcode: [".zcode"], pi: [".pi"], opencode: [".config", "opencode"],
   omp: [".omp"], // ADR-0026: OMP data and plugins live under ~/.omp
+  openclaw: [".openclaw"], // OpenClaw state and plugins live under ~/.openclaw
 });
 export const UPGRADE_RESTART_LINE = "restart needed"; // impl/07 §6 step 8
 export const UPGRADE_HOST_AREA = "host update"; // impl/07 §6 step 4
@@ -748,8 +752,6 @@ export const UNSUPPORTED_HOSTS: readonly UnsupportedHost[] = Object.freeze([
     configDirs: [".gemini/antigravity", ".gemini/antigravity-cli", ".gemini/config"], binaries: ["agy"], source: "v1.0.169:src/adapters/client-map.ts:15-17; detect.ts:156,481-483; #1340" }),
   unsupported({ id: "cursor", name: "Cursor", clientNames: ["cursor-vscode"], envVars: ["CURSOR_TRACE_ID", "CURSOR_CLI", "CURSOR_CWD"],
     pluginPaths: [], configDirs: [".cursor"], binaries: [], source: "v1.0.169:src/adapters/client-map.ts:18; detect.ts:163-165,584" }),
-  unsupported({ id: "openclaw", name: "OpenClaw", clientNames: [], envVars: [],
-    pluginPaths: [], configDirs: [".openclaw"], binaries: [], source: "v1.0.169:src/adapters/detect.ts:252,575 (the runtime sets no env var)" }),
   unsupported({ id: "kimi", name: "Kimi Code", clientNames: ["kimi-code", "kimi"], envVars: [],
     pluginPaths: [], configDirs: [".kimi-code"], binaries: ["kimi"], source: "v1.0.169:src/adapters/client-map.ts:42-44; detect.ts:567; adapters/kimi/index.ts:127" }),
   unsupported({ id: "kilo", name: "Kilo Code", clientNames: ["kilo code"], envVars: ["KILO", "KILO_PID"],
@@ -782,6 +784,7 @@ export const HOOK_HOST_FILE: Readonly<Record<AgentId, {
   pi: null,
   opencode: null,
   omp: null, // ADR-0026: in-process, no hook file
+  openclaw: null, // in-process plugin, no hook file
 });
 export const TOOL_HOOK_EVENTS: readonly string[] = Object.freeze(["PreToolUse", "PostToolUse"]); // canonical events that carry the matcher
 export const HOOK_MATCHER_FIELD = "matcher";
@@ -874,6 +877,7 @@ export const UPGRADE_HOST_COMMAND: Readonly<Record<AgentId, string>> = Object.fr
   vscode: "npm i -g context-mode && context-mode setup --agents vscode",
   kiro: "npm i -g context-mode && context-mode setup --agents kiro",
   zcode: "npm i -g context-mode && context-mode setup --agents zcode",
+  openclaw: "openclaw plugins update context-mode", // OpenClaw plugin update; the exact subcommand is host-specific and unverified
 });
 // Old install forms, kept so uninstall and doctor still find and remove them (ADR-0011 Pi and OpenCode rows).
 export const PI_GIT_PACKAGE = "git:github.com/mksglu/context-mode@release"; // old Pi git entry (uninstall removes it)
@@ -1061,6 +1065,7 @@ export const CODEX_APPROVAL_MODE_FIELD = "default_tools_approval_mode";
 export const CODEX_APPROVAL_APPROVE = "approve";
 export const OWN_MCP_ENTRY: Readonly<Partial<Record<AgentId, OwnMcpEntry>>> = Object.freeze({
   codex: { file: [".codex", "config.toml"], key: ["mcp_servers", SERVER_KEY], fields: { [CODEX_OMIT_TOOLS_FROM_FIELD]: CODEX_OMIT_DEFERRED, [CODEX_APPROVAL_MODE_FIELD]: CODEX_APPROVAL_APPROVE } },
+  openclaw: { file: [".openclaw", "openclaw.json"], key: ["mcp", "servers", SERVER_KEY] }, // the gateway reads mcp.servers; the plugin entry adds the in-process ctx_* tools
   vscode: { file: [VSCODE_MCP_FILE], key: ["servers", SERVER_KEY] },
   kiro: { file: [".kiro", "settings", "mcp.json"], key: ["mcpServers", SERVER_KEY] },
   zcode: {

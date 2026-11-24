@@ -62,6 +62,7 @@ const BUNDLES = Object.freeze([
   { name: "search", entry: "src/entries/run.ts", out: "search.mjs" },
   { name: "pi", entry: "src/entries/pi.ts", out: "pi/index.js" }, // impl/13 §2.2 step 2 (D-M5-arch-1)
   { name: "opencode", entry: "src/entries/opencode.ts", out: "opencode/plugin.js" }, // impl/13 §2.2 step 2 (D-M5-P2-1)
+  { name: "openclaw", entry: "src/entries/openclaw.ts", out: "openclaw/plugin.js" }, // OpenClaw in-process plugin (like opencode)
   // ADR-0019 D1 (PO-NPM-2): the npm bin; the shebang lets the npm bin link run it.
   { name: "cli", entry: "src/entries/cli.ts", out: "cli.mjs", banner: { js: "#!/usr/bin/env node" } },
 ]);
@@ -90,7 +91,7 @@ const ESBUILD_COMMON = Object.freeze({
   platform: "node",
   format: "esm",
   target: "node24",
-  external: ["node:*"],
+  external: ["node:*", "openclaw/plugin-sdk/*"],
   splitting: false,
   metafile: true,
   logLevel: "silent",

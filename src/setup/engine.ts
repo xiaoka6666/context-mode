@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { claudeDirOf, codexDirOf, codexPluginHomeOf, copilotDirOf, dataRootOf, geminiDirOf, kiroDirOf, opencodeDirOf } from "../core/project/config-dir.ts";
-import { AGENT_HOME_DIR, D2_NODE_DETAIL, D2_NODE_FIX, D2_SQLITE_DETAIL, D2_SQLITE_FIX, DB_FILE_NAME, MCP_ENV_FIELD, MCP_ENV_VARS_FIELD, MCP_TOOLS_FIELD, SETUP_MANIFEST_FILE, NATIVE_INSTALL, OPENCODE_CONFIG_FILES, OPENCODE_PLUGIN_KEY, OPENCODE_PLUGINS_KEY, OPENCODE_PLUGIN_PATH, PROJECTS_DIR_NAME, SERVER_KEY, TOOL_ORDER, UPGRADE_KEEP_ASIDE_REASONS, UPGRADE_REPORT_ONLY_REASONS } from "../core/contracts/constants.ts";
+import { AGENT_HOME_DIR, D2_NODE_DETAIL, D2_NODE_FIX, D2_SQLITE_DETAIL, D2_SQLITE_FIX, DB_FILE_NAME, MCP_ENV_FIELD, MCP_ENV_VARS_FIELD, MCP_TOOLS_FIELD, OPENCLAW_PLUGIN_MANIFEST, SETUP_MANIFEST_FILE, NATIVE_INSTALL, OPENCODE_CONFIG_FILES, OPENCODE_PLUGIN_KEY, OPENCODE_PLUGINS_KEY, OPENCODE_PLUGIN_PATH, PROJECTS_DIR_NAME, SERVER_KEY, TOOL_ORDER, UPGRADE_KEEP_ASIDE_REASONS, UPGRADE_REPORT_ONLY_REASONS } from "../core/contracts/constants.ts";
 import { CtxError, formatError } from "../core/contracts/errors.ts";
 import { nodeTooOld } from "../core/hooks/fallback.ts";
 import { ADAPTERS, getAdapter } from "../adapters/table.ts";
@@ -373,6 +373,12 @@ function planHookInstall(row: CheckRow, edits: FileEdit[], env: SetupContext["en
       if (cur === undefined && want.length === 0) return [];
       return [[h.key, want.length === list.length && want.every((e, i) => e === list[i]) ? list : want]];
     });
+  } else if (h.kind === "plugin-dir") {
+    // OpenClaw: write the extension entry (index.ts) and its manifest; a changed file is rewritten whole.
+    for (const f of h.files) {
+      const before = readOr(f.file);
+      if (before !== f.content) edits.push({ plain: true, file: f.file, before, after: f.content, changes: [{ file: f.file, path: path.basename(f.file), before: before === undefined ? null : "old", after: path.basename(f.file) }] });
+    }
   }
 }
 
@@ -755,10 +761,11 @@ function hookRegisteredCheck(row: CheckRow, env: SetupContext["env"], list: Chec
   const kept = !edits.length && h.kind === "plugin-list" ? pluginListIssue(h) : undefined;
   if (!edits.length) return kept === undefined ? { name: "hook-registered", ok: true } : { name: "hook-registered", ok: false, detail: kept };
   const trust = h.kind === "file" ? h.trust : undefined;
-  if (trust && edits.every((e) => e.file === trust && e.changes.every((c) => isTrust(row, c)))) return { name: "hook-registered", ok: false, detail: `${h.file}: the context-mode hooks are not trusted in ${trust}; re-run setup` };
+  if (h.kind === "file" && trust && edits.every((e) => e.file === trust && e.changes.every((c) => isTrust(row, c)))) return { name: "hook-registered", ok: false, detail: `${h.file}: the context-mode hooks are not trusted in ${trust}; re-run setup` };
   const issue = h.kind === "plugin-list" ? pluginListIssue(h) : h.kind === "file" && row.id === "kiro" ? kiroDisabledIssue(h) : undefined;
   // D-OC2-NATIVE-CMD-1: on OpenCode 2 the native command is `opencode plugin add context-mode` (the 1.19 form is an error there).
   const oc2 = issue === undefined && row.id === "opencode" && h.kind === "plugin-list" && hostBin("opencode", env).file !== undefined && opencodeMajor("opencode", env) >= 2;
+  if (h.kind === "plugin-dir") return { name: "hook-registered", ok: false, detail: `${h.dir} lacks the context-mode extension entry (index.ts, ${OPENCLAW_PLUGIN_MANIFEST}); run: context-mode setup --agents openclaw` };
   return { name: "hook-registered", ok: false, detail: issue ?? `${h.file} lacks the context-mode hook entry${oc2 ? "; run: opencode plugin add context-mode" : ""}` };
 }
 

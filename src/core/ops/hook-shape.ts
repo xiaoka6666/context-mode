@@ -15,6 +15,7 @@ import kiro from "../../../tests/fixtures/host-schemas/kiro.json" with { type: "
 import zcode from "../../../tests/fixtures/host-schemas/zcode.json" with { type: "json" };
 import pi from "../../../tests/fixtures/host-schemas/pi.json" with { type: "json" };
 import opencode from "../../../tests/fixtures/host-schemas/opencode.json" with { type: "json" };
+import openclaw from "../../../tests/fixtures/host-schemas/openclaw.json" with { type: "json" };
 
 type Schema = Readonly<Record<string, unknown>>;
 
@@ -22,7 +23,7 @@ type Schema = Readonly<Record<string, unknown>>;
 export interface HostShape { stdout?: string; output: Readonly<Record<string, Schema>>; }
 
 export const HOST_SHAPES: Readonly<Record<AgentId, HostShape>> = {
-  "claude-code": claudeCode, codex, gemini, qwen, "copilot-cli": copilotCli, vscode, kiro, zcode, pi, opencode,
+  "claude-code": claudeCode, codex, gemini, qwen, "copilot-cli": copilotCli, vscode, kiro, zcode, pi, opencode, openclaw,
   omp: pi, // ADR-0026: OMP reads the Pi extension reply
 };
 

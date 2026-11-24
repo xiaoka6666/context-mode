@@ -696,7 +696,7 @@ describe("ADR-0010 doctor on every unsupported host: one clear line, no false FA
 
   test("[D-UNSUPPORTED-HOSTS-1] the list holds the removed 2.0 hosts, each with a source line", () => {
     const ids = C.UNSUPPORTED_HOSTS.map((h) => h.id).sort();
-    assert.deepEqual(ids, ["antigravity", "cursor", "jetbrains-copilot", "kilo", "kimi", "openclaw", "zed"]); // ADR-0026 T20: omp is supported (D-OMP-ROW-1)
+    assert.deepEqual(ids, ["antigravity", "cursor", "jetbrains-copilot", "kilo", "kimi", "zed"]); // ADR-0026 T20: omp is supported (D-OMP-ROW-1); openclaw is supported (the 12th agent)
     for (const h of C.UNSUPPORTED_HOSTS) assert.ok(h.source.includes(":"), h.id);
   });
 
@@ -2687,10 +2687,10 @@ describe("ADR-0010 doctor: hook-runs check per agent (GP11)", { concurrency: CON
     return { home, env, reg: buildRegistry({ home, pkgDir, env }) };
   }
 
-  test("H5: doctor hook-runs PASSES on all 11 hosts with the real hook: the large shell read gets the saving effect", (t) => {
+  test("H5: doctor hook-runs PASSES on all 12 hosts with the real hook: the large shell read gets the saving effect", (t) => {
     const s = sandbox(t, REAL_HOOK);
     assert.equal(s.reg.length, ADAPTERS.length);
-    assert.equal(s.reg.length, 11); // ADR-0026: omp is the 11th row
+    assert.equal(s.reg.length, 12); // ADR-0026: omp is the 11th row; openclaw the 12th
     for (const row of s.reg) {
       const c = hookRunsCheck(row, s.env);
       assert.equal(c.name, "hook-runs", row.id);
@@ -2865,7 +2865,7 @@ createInterface({ input: process.stdin }).on("line", (l) => {
     assert.equal(readFileSync(toml, "utf8").includes(tomlBefore.slice(tomlBefore.indexOf("[mcp_servers.context-mode.tools"))), true);
   });
 
-  test("[D-DOC-RT-1] all 11 hosts: after setup, D4 is clean and D3 names no MCP entry for a host whose entry setup wrote", async (t) => {
+  test("[D-DOC-RT-1] all 12 hosts: after setup, D4 is clean and D3 names no MCP entry for a host whose entry setup wrote", async (t) => {
     const s = sandbox(t);
     mkdirSync(s.tmp, { recursive: true });
     const res = await runSetup({ home: s.home, pkgDir: s.pkgDir, env: s.env, agents: FILE_HOSTS, runId: "r1" });

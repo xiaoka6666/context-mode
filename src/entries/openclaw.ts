@@ -81,8 +81,10 @@ export interface OpenClawToolDef {
 export interface OpenClawContextEngine {
   /** OpenClaw ContextEngine contract (registry-contract.ts): the factory must return `info` (with non-empty
    *  id + name) and `ingest`/`assemble`/`compact` functions or the host degrades the engine to "legacy"
-   *  every turn. context-mode supplies all of them; its own compaction strategy is still delegated to the
-   *  host (ownsCompaction: false, no-op compact). `transcriptSemantics.currentTurnFence` is required for
+   *  every turn. context-mode supplies all of them. It does not own the compaction algorithm: `ownsCompaction`
+   *  stays false and `compact()` delegates to the runtime (delegateCompactionToRuntime), OpenClaw's documented
+   *  path for engines that do not implement the algorithm themselves.
+   *  `transcriptSemantics.currentTurnFence` is required for
    *  durable recorder turns (context-engine-logical-turn.ts): without the declaration the host degrades
    *  with "current-turn transcript fencing is not declared" even when the base contract is satisfied.
    *  `transcriptSemantics.turnAdvancementIdempotency` plus `commitTurn` (host-compat.ts) is the second
@@ -98,7 +100,19 @@ export interface OpenClawContextEngine {
     };
   };
   ownsCompaction?: boolean;
-  compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ok: boolean; compacted: boolean }>;
+  /** Delegates to the runtime, which answers with the real result the host applies to the transcript.
+   *  `result` is optional: an engine that answers `{ compacted: false }` instead leaves it absent. */
+  compact(params?: { sessionId?: string; [k: string]: unknown }): Promise<{
+    ok: boolean;
+    compacted: boolean;
+    result?: {
+      summary?: string;
+      firstKeptEntryId?: string;
+      tokensBefore?: number;
+      tokensAfter?: number;
+      [k: string]: unknown;
+    };
+  }>;
   /** Passthrough: context-mode does not store per-message context; the host keeps its own transcript. */
   ingest(params?: { sessionId?: string; [k: string]: unknown }): Promise<{ ingested: boolean }>;
   /** Passthrough: return the supplied messages unchanged; cutting them down stays with the host (ownsCompaction: false). */
@@ -289,7 +303,12 @@ export default {
       info: {
         id: PLUGIN_ID,
         name: "Context Mode",
-        version: "2.2.1",
+        // No `version`: there is no version constant in the contracts yet (the same deviation is noted at
+        // src/entries/server.ts, where SERVER_KEY carries "dev"). A hardcoded literal here already drifted
+        // once — it read "2.2.1" while package.json and the plugin manifests said "2.2.2" — and would drift
+        // again on every release. `info.version` is optional in the host contract (only id + name are
+        // required), and a stale version is worse than no version, so the field stays out until a constant
+        // exists.
         // Durable recorder turns (OpenClaw's default session handling) only admit a context engine that
         // declares the current-turn fence; without it the host degrades to legacy every turn
         // ("current-turn transcript fencing is not declared"). Our assemble is a no-op passthrough, so

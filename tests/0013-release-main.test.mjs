@@ -1122,7 +1122,11 @@ describe("ADR-0013: dev tree version", { concurrency: CONC }, () => {
     if (r.status === 2) return t.skip("no tags readable from origin here: " + r.stderr.trim());
     assert.equal(r.status, 0, r.stderr);
     const v = get(REPO, "package.json").version;
-    for (const f of SOURCES) assert.ok(readFileSync(path.join(REPO, f), "utf8").includes('"version": "' + v + '"'), f + " is not at " + v);
+    // package-lock.json is gitignored (see .gitignore), so it is not a source of this repo's version: it is absent on
+    // a clean checkout and stale on any machine that has run npm install. SOURCES otherwise mirrors the write list
+    // of dev-version.mjs, which skips a missing file.
+    const trackedSources = SOURCES.filter((f) => f !== "package-lock.json");
+    for (const f of trackedSources) assert.ok(readFileSync(path.join(REPO, f), "utf8").includes('"version": "' + v + '"'), f + " is not at " + v);
   });
 
   test("release.yml: a pushed v2.* tag ends with a job that writes the tag version back to v2-design (tag, not main, not release)", () => {

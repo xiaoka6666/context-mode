@@ -24,7 +24,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MILESTONES = ["M0", "M1", "M2", "M3", "M4", "M5", "M6", "M7"];
@@ -91,7 +91,14 @@ function v2Unit() {
     dumpChild("v2-unit", t);
     return { status: "FAIL", detail: `tsc --noEmit exit ${t.status}` };
   }
-  const r = run(process.execPath, ["--test", "--test-reporter=tap", "tests/"]);
+  // --import loads the resolve hook before the test graph is instantiated, so src/entries/openclaw.ts is
+  // loadable outside the OpenClaw gateway: it statically imports openclaw/plugin-sdk/core, which only resolves
+  // inside the host (its loader aliases it to its own dist) and would otherwise fail ERR_MODULE_NOT_FOUND at
+  // load time, before any assertion. tests/_lib/openclaw-sdk-hook.mjs explains the ordering constraint.
+  const r = run(process.execPath, [
+    "--import", pathToFileURL(rel("tests/_lib/openclaw-sdk-register.mjs")).href,
+    "--test", "--test-reporter=tap", "tests/",
+  ]);
   const count = (key) => {
     const line = r.stdout.split("\n").find((l) => l.startsWith(`# ${key} `));
     return line === undefined ? undefined : Number(line.slice(key.length + 3));

@@ -91,7 +91,7 @@ const ESBUILD_COMMON = Object.freeze({
   platform: "node",
   format: "esm",
   target: "node24",
-  external: ["node:*"],
+  external: ["node:*", "openclaw/plugin-sdk/*"],
   splitting: false,
   metafile: true,
   logLevel: "silent",

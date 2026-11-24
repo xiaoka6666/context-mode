@@ -20,6 +20,12 @@ import { TOOLS, checkCall } from "../core/tools/registry.ts";
 import { INSTRUCTIONS } from "../prompt/_generated.ts";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// OpenClaw supplies this SDK surface at runtime (plugin-module-loader resolves openclaw/plugin-sdk/*
+// to its own dist). It performs the real built-in summarization compaction: it reads the session
+// transcript, calls the model, and returns { summary, firstKeptEntryId, tokensBefore, tokensAfter }.
+// context-mode does not own the compaction algorithm, so it delegates to the runtime (see
+// OpenClaw docs: plugins/architecture-internals/context-engines "delegate it explicitly").
+import { delegateCompactionToRuntime } from "openclaw/plugin-sdk/core";
 
 const { existsSync } = process.getBuiltinModule("node:fs") as typeof import("node:fs"); // D-CI-PERF-3
 
@@ -296,8 +302,13 @@ export default {
         },
       },
       ownsCompaction: false,
-      async compact() {
-        return { ok: true, compacted: false };
+      async compact(params) {
+        // Delegate to OpenClaw's built-in summarization compaction instead of a no-op. This is
+        // the documented path for engines that do not own the compaction algorithm (see OpenClaw
+        // docs: plugins/architecture-internals/context-engines). It returns the real
+        // { ok, compacted, result: { summary, firstKeptEntryId, tokensBefore, tokensAfter } },
+        // so /compact stops reporting "nothing to compact" and actually frees context.
+        return await delegateCompactionToRuntime(params);
       },
       async ingest() {
         // context-mode keeps large tool output out of the conversation via its hooks; it does not store

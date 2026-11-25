@@ -26,18 +26,12 @@ export const SYNC_INDEX_MAX_BYTES = 65536; // DECISIONS-r9 F1
 // D-M7-SV-1: the PostToolUse replace path has its own sizes, separate from OUTPUT_CAP (which stays the cap for
 // replies and the Read deny threshold). A result over REPLACE_TRIGGER_BYTES is indexed whole and the model gets
 // whole BM25-selected chunks of at most REPLACE_CHUNK_BYTES each, within REPLACE_RETURN_BYTES, plus the more line.
-// D-R48-TRIGGER-1 (#1326 coreycoburn): a documented setting, env CTX_REPLACE_TRIGGER_BYTES (a positive safe integer),
-// read once at process start; default 4096. Bench (bench/replay.mjs, 602 files, 28,390 calls, 37.9 MB): trigger 4096
-// saves 41.99% (1,878 replaces), 6144 saves 30.89% (998), 8192 saves 23.34% (582): raising it costs a quarter to
-// half of the saving, so the default stays; a user who wants 2-6 KB outputs whole sets the env var.
-export const REPLACE_TRIGGER_BYTES_DEFAULT = 4096;
+// D-REPLACE-TRIGGER-CONST-1 (amends D-R48-TRIGGER-1): a constant; no env, flag or setting changes it. Bench
+// (bench/replay.mjs, 602 files, 28,390 calls, 37.9 MB): 4096 saves 41.99%, 6144 saves 30.89%, 8192 saves 23.34%.
+// A stored output reads back whole through ctx_search. REPLACE_TRIGGER_ENV is the retired env name: doctor reads it
+// only to tell the user it is no longer read (D-REPLACE-TRIGGER-CONST-1); nothing else reads it.
+export const REPLACE_TRIGGER_BYTES = 4096;
 export const REPLACE_TRIGGER_ENV = "CTX_REPLACE_TRIGGER_BYTES";
-export function readReplaceTrigger(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === "") return REPLACE_TRIGGER_BYTES_DEFAULT;
-  const n = Number(raw);
-  return Number.isSafeInteger(n) && n > 0 ? n : REPLACE_TRIGGER_BYTES_DEFAULT;
-}
-export const REPLACE_TRIGGER_BYTES = readReplaceTrigger(process.env[REPLACE_TRIGGER_ENV]);
 // D-R41-READ-OFFSET-1 (#1314): a read-like tool (canonical name) called with a range key is the user's own window:
 // PostToolUse lets it through whole. Claude Code, Pi, Gemini: offset/limit; VS Code read_file and Copilot view map to them.
 export const RANGE_READ_TOOLS = Object.freeze(["Read", "view"]);
@@ -423,6 +417,11 @@ export const RECALL_BUDGET_BYTES = 2048; // whole recall block, wrapper included
 export const RECALL_MIN_SCORE = 5;
 export const RECALL_MAX_ROWS = 340; // newest rows read per prompt (= MAX_CANDIDATES_TOTAL)
 export const COMPACTED_META_PREFIX = "compacted:"; // meta key + session id: a compaction happened in this session
+// D-0027-LOSTBET-1 (ADR-0027 D3, FR5, 10.7): meta keys + session id + ":" + tool key. BET_META_PREFIX notes a replaced
+// full Read of a file (the bet); LOSTBET_META_PREFIX marks a lost bet, so later outputs with that key pass whole up to
+// OUTPUT_CAP for the rest of the session. A compaction clears the session's lostbet marks.
+export const BET_META_PREFIX = "bet:";
+export const LOSTBET_META_PREFIX = "lostbet:";
 export const RECALL_UNITS_SEEN_META_PREFIX = "recall_units_seen:"; // r3-ledger: JSON "source:ord" list of line units already injected
 export const UNITS_ANCESTOR_FACTOR = 8; // D-UNITS-BOUND-1: ancestor copies per output <= this x its bytes (0 of 680k units in 3520 real files drop a parent at 8)
 // D-1330-RECALL-PROMPT-1 (#1330): the recall query is the current prompt only, its first distinct words up to this
@@ -916,6 +915,10 @@ export const OMP_PRINT_MODE_INFO = "Print mode sends no prompt event. Use omp or
 export const OMP_SCRIPTS_INFO = "Add < /dev/null in scripts.";
 export const OMP_IMPORT_INFO = (claude: string, mcp: string): string =>
   `OMP also imports context-mode from ${claude}. To run it once, add "context-mode" to disabledServers in ${mcp}.`;
+// D-REPLACE-TRIGGER-CONST-1: the doctor info line when the retired CTX_REPLACE_TRIGGER_BYTES is still set (`where` is a
+// settings file path or "the process env"). Positive wording; never a WARN or FAIL row.
+export const REPLACE_TRIGGER_RETIRED_INFO = (where: string): string =>
+  `${REPLACE_TRIGGER_ENV} in ${where} is no longer read: context-mode stores every tool output over ${REPLACE_TRIGGER_BYTES} B whole and ctx_search reads it back. You can remove that line from ${where}.`;
 export const PI_CURRENT_MAJOR = 2; // an installed context-mode at this major or later is the current Pi package
 export const V1_OPENCODE_PLUGIN_SPEC = "context-mode"; // bare npm spec in .plugin[]
 export const V1_TMP_PREFIX = "context-mode-"; // <os tmp>/context-mode-*

@@ -4,13 +4,13 @@ import { describe, test } from "node:test";
 import { CONC } from "./_lib/concurrency.mjs";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { HOOK_WORDS, LINE_PREFIX, agentRows, checkAgentLines, renderAgentBlocks, renderAgentLines, writeAgentLines } from "../build/readme-agents.mjs";
-import { installWithRetry, missingPackages } from "../scripts/ci-install.mjs";
+import { HOST_WAITS_MS, installWithRetry, missingPackages, registryFault, retryHostInstall, ompAssetName, sha256For, installOmpFromRelease, OMP_RELEASE_BASE, addToGithubPath } from "../scripts/ci-install.mjs";
 import { ADAPTERS } from "../src/adapters/table.ts";
 import { AGENT_IDS } from "../src/core/contracts/agents.ts";
 import { DOCTOR_CHECK_ORDER, REPORT_CAP, REPORT_SOURCE_LABEL } from "../src/core/contracts/constants.ts";
@@ -549,7 +549,136 @@ describe("ADR-0013 repo: CI install retry", () => {
   test("ci.yml: every dev install goes through scripts/ci-install.mjs, none calls npm install directly", () => {
     const y = readFileSync(root + ".github/workflows/ci.yml", "utf8");
     assert.ok(!/- run: npm install/.test(y));
-    assert.equal(y.split("- run: node scripts/ci-install.mjs").length - 1, 3);
+    // 3 dev installs; the host CLI installs use the --npm mode of the same script (D-CI-HOST-INSTALL-1).
+    assert.equal(y.split("- run: node scripts/ci-install.mjs").length - 1 - (y.split("- run: node scripts/ci-install.mjs --npm ").length - 1), 3);
+  });
+
+  // D-OMP-CI-4: OMP's install script asks build.stencil.so, which answered no_build on 2026-11-25. Both OMP jobs then
+  // take the same tag from OMP's GitHub release, SHA-256 checked, and only after OMP's own script ran.
+  test("[omp release] both OMP jobs run the release step after OMP's install script and before omp --version (D-OMP-CI-4)", () => {
+    const y = readFileSync(root + ".github/workflows/ci.yml", "utf8");
+    const step = 'run: node scripts/ci-install.mjs --omp v18.20.0 "${{ runner.temp }}/omp-bin"';
+    assert.equal(y.split(step).length - 1, 2);
+    for (const id of ["D-OMP-CI-1", "D-OMP-CI-2"]) {
+      const ver = y.indexOf("name: omp version (" + id + ")");
+      assert.ok(ver > 0, id);
+      const rel = y.lastIndexOf(step, ver);
+      assert.ok(rel > 0 && y.lastIndexOf("omp.sh/install", rel) > 0, id + ": release step sits after OMP's script, before omp --version");
+    }
+  });
+
+  test("[omp release] each OMP native install step has a time limit and hands off on failure (D-OMP-CI-5)", () => {
+    const y = readFileSync(root + ".github/workflows/ci.yml", "utf8");
+    const parts = y.split("      - name: omp 18.20.0 (native install script").slice(1);
+    assert.equal(parts.length, 4);
+    for (const p of parts) {
+      const head = p.split("\n      - ")[0];
+      assert.ok(head.includes("\n        timeout-minutes: 6\n"), head.split("\n")[0]);
+      assert.ok(head.includes("\n        continue-on-error: true\n"), head.split("\n")[0]);
+    }
+    assert.ok(y.includes("--omp v18.20.0"), "the D-OMP-CI-4 step still follows");
+  });
+
+  test("[omp release] asset names follow OMP's release, and an unknown target gets none", () => {
+    assert.equal(ompAssetName("linux", "x64"), "omp-linux-x64");
+    assert.equal(ompAssetName("darwin", "arm64"), "omp-darwin-arm64");
+    assert.equal(ompAssetName("win32", "x64"), "omp-windows-x64.exe");
+    assert.equal(ompAssetName("freebsd", "x64"), null);
+    assert.equal(ompAssetName("linux", "ia32"), null);
+    assert.equal(OMP_RELEASE_BASE, "https://github.com/can1357/oh-my-pi/releases/download/");
+  });
+
+  test("[omp release] sha256For reads the exact name from SHA256SUMS.txt and nothing else", () => {
+    const a = "a".repeat(64), b = "B".repeat(64);
+    const sums = a + "  omp-linux-x64\n" + b + "  omp-linux-x64.sig\nshort  omp-darwin-arm64\n";
+    assert.equal(sha256For(sums, "omp-linux-x64"), a);
+    assert.equal(sha256For(sums, "omp-linux-x64.sig"), "b".repeat(64));
+    assert.equal(sha256For(sums, "omp-darwin-arm64"), null);
+    assert.equal(sha256For(sums, "omp-windows-x64.exe"), null);
+  });
+
+  test("[omp release] no target binary and no SHA-256 line both exit 1 and write no file", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "omp-rel-"));
+    const lines = [];
+    assert.equal(await installOmpFromRelease("v18.20.0", dir, { platform: "freebsd", arch: "x64", log: (l) => lines.push(l) }), 1);
+    assert.deepEqual(lines, ["ci-install: OMP ships no binary for freebsd-x64"]);
+    assert.deepEqual(readdirSync(dir), []);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // D-OMP-CI-6: run 45636245183 installed omp from the release, then "omp: command not found" (the timed-out step never wrote GITHUB_PATH).
+  test("[omp release] addToGithubPath appends the omp dir to GITHUB_PATH, and writes nothing without it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "omp-path-"));
+    const file = path.join(dir, "github_path");
+    writeFileSync(file, "/already/there\n");
+    assert.equal(addToGithubPath(path.join(dir, "omp-bin"), { GITHUB_PATH: file }), true);
+    assert.equal(readFileSync(file, "utf8"), "/already/there\n" + path.join(dir, "omp-bin") + "\n");
+    assert.equal(addToGithubPath(path.join(dir, "omp-bin"), {}), false);
+    assert.deepEqual(readdirSync(dir), ["github_path"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("[omp release] the --omp CLI adds its dir to GITHUB_PATH only after a good install", () => {
+    const src = readFileSync(new URL("../scripts/ci-install.mjs", import.meta.url), "utf8");
+    const cli = src.slice(src.indexOf('process.argv[2] === "--omp"'));
+    assert.ok(cli.indexOf("if (code === 0) addToGithubPath(process.argv[4]);") > 0, "CLI adds the dir on exit 0");
+    assert.ok(cli.indexOf("addToGithubPath") < cli.indexOf("process.exit(code)"), "before exit");
+  });
+
+  // D-CI-HOST-INSTALL-1: host CLI installs (npm i -g <agent CLI>) retry with a growing wait and name a registry fault.
+  test("[host install] registryFault names the third-party package of a registry 404, 5xx or network fault, in one line", () => {
+    const pi404 = "npm error code E404\nnpm error 404 The requested resource '@aws-sdk/middleware-websocket@https://registry.npmjs.org/@aws-sdk/middleware-websocket/-/middleware-websocket-3.972.68.tgz' could not be found or you do not have permission to access it.\nnpm error 404\n";
+    assert.equal(registryFault(pi404), "npm registry fault E404 for @aws-sdk/middleware-websocket, not a context-mode package");
+    assert.equal(registryFault("npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@aws-sdk%2fmiddleware-websocket - Not found\n"),
+      "npm registry fault E404 for @aws-sdk/middleware-websocket, not a context-mode package");
+    assert.equal(registryFault("npm ERR! code E503\nnpm ERR! 503 Service Unavailable - GET https://registry.npmjs.org/opencode-ai/-/opencode-ai-1.19.5.tgz\n"),
+      "npm registry fault E503 for opencode-ai, not a context-mode package");
+    assert.equal(registryFault("npm error code ETIMEDOUT\nnpm error network request to https://registry.npmjs.org/@openai%2fcodex failed, reason: timeout\n"),
+      "npm registry fault ETIMEDOUT for @openai/codex, not a context-mode package");
+    for (const [why, t] of [["ours", "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/context-mode - Not found\n"],
+      ["not a registry fault", "npm error code EACCES\nnpm error syscall mkdir\n"], ["empty", ""], ["no npm text", "copilot: no platform package found"]]) {
+      assert.equal(registryFault(t), null, why);
+    }
+  });
+
+  test("[host install] retryHostInstall: 3 tries, a growing wait, one line per red try with the fault; green on a later try", () => {
+    assert.equal(HOST_WAITS_MS.length, 2);
+    assert.ok(HOST_WAITS_MS[0] > 0 && HOST_WAITS_MS[1] > HOST_WAITS_MS[0], "the wait grows");
+    const fault = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@aws-sdk%2fx - Not found\n";
+    const waits = []; const lines = []; let n = 0;
+    const ok = retryHostInstall({ label: "p", attempt: () => (++n < 3 ? { ok: false, text: fault } : { ok: true, text: "" }), sleep: (ms) => waits.push(ms), log: (l) => lines.push(l) });
+    assert.deepEqual([ok.ok, ok.tries, n], [true, 3, 3]);
+    assert.deepEqual(waits, HOST_WAITS_MS);
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0], "ci-install: p try 1/3 failed: npm registry fault E404 for @aws-sdk/x, not a context-mode package, next try in " + HOST_WAITS_MS[0] / 1000 + " s");
+    assert.equal(ok.fault, "npm registry fault E404 for @aws-sdk/x, not a context-mode package");
+    const w2 = [];
+    const red = retryHostInstall({ label: "p", attempt: () => ({ ok: false, text: "npm error code EACCES\n" }), sleep: (ms) => w2.push(ms), log: () => {} });
+    assert.deepEqual([red.ok, red.tries, red.fault, w2.length], [false, 3, null, 2], "all 3 red still fails, no fault named for a local error");
+    const first = retryHostInstall({ label: "p", attempt: () => ({ ok: true, text: "" }), sleep: () => assert.fail("no wait on a green first try"), log: () => assert.fail("no line") });
+    assert.equal(first.tries, 1);
+  });
+
+  test("[host install] ci.yml host CLI installs and the windows-hosts check go through the retry", () => {
+    const y = readFileSync(root + ".github/workflows/ci.yml", "utf8");
+    for (const l of ["- run: node scripts/ci-install.mjs --npm i -g @openai/codex@0.166.0", "- run: node scripts/ci-install.mjs --npm i -g opencode-ai@1.19.5",
+      '- run: node scripts/ci-install.mjs --npm i --prefix "${{ runner.temp }}/opencode2" @opencode/cli@2.2.5']) assert.ok(y.includes(l + "\n"), l);
+    assert.ok(!y.includes("- run: npm i "), "no host CLI install calls npm directly");
+    const w = readFileSync(root + "e2e/checks/windows-hosts.mjs", "utf8");
+    assert.ok(w.includes('import { retryHostInstall } from "../../scripts/ci-install.mjs";'));
+    assert.ok(w.includes("retryHostInstall({") && w.includes("return { ok: r.status === 0 && v?.status === 0"), "install and --version are one try");
+  });
+
+  test("[host install] CLI --npm: runs npm with the given args, exit 0 on a green try", (t) => {
+    const bin = mkdtempSync(path.join(tmpdir(), "cm-hostinst-"));
+    t.after(() => rmSync(bin, { recursive: true, force: true }));
+    const out = path.join(bin, "args.txt");
+    if (process.platform === "win32") writeFileSync(path.join(bin, "npm.cmd"), "@echo %* > \"" + out + "\"\r\n@exit /b 0\r\n");
+    else { writeFileSync(path.join(bin, "npm"), "#!/bin/sh\necho \"$@\" > '" + out + "'\n"); chmodSync(path.join(bin, "npm"), 0o755); }
+    const r = spawnSync(process.execPath, [root + "scripts/ci-install.mjs", "--npm", "i", "-g", "x@1.0.0"], { encoding: "utf8", env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(readFileSync(out, "utf8").trim(), "i -g x@1.0.0");
+    assert.equal(r.stderr, "");
   });
 
   test("ci.yml: repo checks after a failed install are skipped, so the install error is the only red step", () => {
@@ -775,6 +904,31 @@ describe("ADR-0013 repo: main-only release workflow", () => {
     assert.ok(needsOf("main-rollback").includes("ci"));
   });
 
+  test("[MAIN-ONLY] release.yml reuses the green main CI of the same sha; ci runs when there is none (D-REL-CI-REUSE-1)", () => {
+    const v = body("ci-verified");
+    assert.ok(v.includes("actions: read") && v.includes("contents: read"), v.join("|"));
+    assert.deepEqual(v.filter((x) => x.endsWith(": write")), [], "ci-verified writes nothing");
+    for (const l of ["GH_TOKEN: ${{ github.token }}", "SHA: ${{ github.sha }}", "REPO: ${{ github.repository }}",
+      "green: ${{ steps.check.outputs.green }}", 'run: node scripts/release/ci-verified.mjs >> "$GITHUB_OUTPUT"']) assert.ok(v.includes(l), l);
+    // ci tests github.sha (workflow_call checks out the dispatched ref), the same sha ci-verified checks.
+    assert.deepEqual(needsOf("ci"), ["route", "ci-verified"]);
+    assert.ok(body("ci").includes("uses: ./.github/workflows/ci.yml"));
+    assert.ok(body("ci").includes("if: ${{ !cancelled() && !(needs.route.outputs.layout == 'main' && needs.ci-verified.outputs.green == 'true') }}"),
+      "ci skips only on the main path with a verified green run; the tag path always runs it");
+    const ok = "(needs.ci.result == 'success' || (needs.ci.result == 'skipped' && needs.ci-verified.outputs.green == 'true'))";
+    for (const j of ["main-plan", "main-rollback"]) {
+      assert.deepEqual(needsOf(j), ["ci-verified", "ci", "route"], j);
+      const c = body(j).find((x) => x.startsWith("if:"));
+      assert.ok(c.startsWith("if: ${{ !cancelled() && ") && c.endsWith(" && " + ok + " }}"), j + ": " + c);
+    }
+    // A skipped ci is an ancestor of every main job, so each one names !cancelled() and the success of the job before it.
+    const prev = { "main-build": "main-plan", "main-smoke": "main-build", "main-npm": "main-smoke", "main-commit": "main-npm", "main-github-release": "main-commit", "main-close-issues": "main-github-release" };
+    for (const [j, p] of Object.entries(prev)) {
+      const c = body(j).find((x) => x.startsWith("if:"));
+      assert.ok(c.startsWith("if: ${{ !cancelled() && needs." + p + ".result == 'success' && "), j + ": " + c);
+    }
+  });
+
   test("[MAIN-ONLY] release.yml main path names no branch but main (no release, no release-staging, no reset)", () => {
     for (const j of MAIN_JOBS) {
       const b = body(j).join("\n");
@@ -978,6 +1132,17 @@ describe("ADR-0015 repo: doc facts", () => {
 
   const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
   const json = (p) => JSON.parse(read(p));
+
+  // D-REPLACE-TRIGGER-CONST-1 (amends D-R48-TRIGGER-1): owner rule "ana kural hicbir zaman flag env kullanmiyoruz".
+  // The replace trigger is the constant 4096; no doc tells users to set CTX_REPLACE_TRIGGER_BYTES. Only the dated
+  // DEVIATIONS history may name it.
+  test("[D-REPLACE-TRIGGER-CONST-1] no doc names CTX_REPLACE_TRIGGER_BYTES as a setting (DEVIATIONS history only)", () => {
+    // Decision records keep the name: DEVIATIONS (history) and ADR-0027 (the decision that removes the setting).
+    const HISTORY = new Set(["docs/architecture/DEVIATIONS.md", "docs/architecture/adr/0027-replace-policy.md"]);
+    const docs = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => f !== "" && !HISTORY.has(f));
+    const naming = docs.filter((f) => existsSync(path.join(ROOT, f)) && readRoot(f).includes("CTX_REPLACE_TRIGGER_BYTES"));
+    assert.deepEqual(naming, [], "these docs still name CTX_REPLACE_TRIGGER_BYTES");
+  });
 
   test("docs/tools.md names the doctor check range from DOCTOR_CHECK_ORDER", () => {
     const md = read("docs/tools.md");

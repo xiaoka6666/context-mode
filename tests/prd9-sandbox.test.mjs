@@ -931,6 +931,16 @@ describe("PRD-v2 section 9: child env", () => {
     for (const v of Object.values(out)) assert.equal(typeof v, "string");
   });
 
+  test("[#1417] buildChildEnv sets PYTHONUTF8=1 by default and keeps a parent PYTHONUTF8 of any case", () => {
+    assert.equal(buildChildEnv({ PATH: "/bin" }).PYTHONUTF8, "1");
+    assert.equal(buildChildEnv({ PATH: "/bin", PYTHONUTF8: "0" }).PYTHONUTF8, "0");
+    const mixed = buildChildEnv({ PATH: "/bin", PythonUtf8: "0" });
+    assert.equal(mixed.PythonUtf8, "0");
+    assert.equal("PYTHONUTF8" in mixed, false);
+    assert.equal("PYTHONIOENCODING" in buildChildEnv({ PATH: "/bin" }), false);
+    assert.equal(buildChildEnv({ PATH: "/bin" }, { PYTHONUTF8: "0" }).PYTHONUTF8, "0");
+  });
+
   test("buildChildEnv is pure: never throws, never mutates the parent object", () => {
     const parent = { PATH: "/bin", NODE_OPTIONS: "x" };
     const copy = { ...parent };
@@ -955,7 +965,7 @@ describe("PRD-v2 section 9: child env", () => {
     const winPath = "C:\\Program Files\\GitHub CLI;C:\\Program Files\\Git\\usr\\bin;C:\\Windows\\system32";
     const out = buildChildEnv({ Path: winPath, NODE_OPTIONS: "x" });
     assert.equal(out.Path, winPath);
-    assert.deepEqual(Object.keys(out), ["Path"]);
+    assert.deepEqual(Object.keys(out), ["Path", "PYTHONUTF8"]); // #1417: one Path key; PYTHONUTF8 is the sandbox UTF-8 default
   });
 
   test("[M2] GP4/windows-inherited-path (unit): a shell child resolves a binary the way the parent PATH does", async () => {
@@ -1013,6 +1023,66 @@ describe("PRD-v2 section 9: child env", () => {
     const r = await run("if true; then echo ok; fi", buildChildEnv(process.env, { CTX_FILE: "/proj/a.txt" }));
     assert.equal(r.exitCode, 0);
     assert.equal(r.stdout.toString("utf8"), "ok\n");
+  });
+
+  // #1417 (ADR-0025 #1325 side note: "Sandbox runs set PYTHONUTF8=1"; v1.0.169 executor.js set it on every child).
+  // On Windows CPython writes a pipe in the ANSI code page (cp1252, cp1254); the sandbox reads UTF-8.
+  // A legacy 8-bit locale gives the same bytes on POSIX, so this test runs on every OS.
+  // Serial: the test sets process.env.LC_ALL / LANG for its duration.
+  const UTF8_PROBE = "café naïve € ğüşİı → 🤖";
+  const LEGACY_LOCALE = { LC_ALL: process.platform === "darwin" ? "tr_TR.ISO8859-9" : "tr_TR.ISO-8859-9", LANG: "tr_TR.ISO-8859-9" };
+  async function withLegacyLocale(fn) {
+    const saved = {};
+    for (const k of ["LC_ALL", "LANG", "PYTHONUTF8", "PYTHONIOENCODING"]) { saved[k] = process.env[k]; delete process.env[k]; }
+    Object.assign(process.env, LEGACY_LOCALE);
+    try { return await fn(); } finally {
+      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  }
+  function ctxRoot(root) {
+    return {
+      project: { projectKey: "1".repeat(16), projectDir: join(root, "projects", "1".repeat(16)), dbPath: join(root, "projects", "1".repeat(16), "context.db"), worktree: root, containmentRoot: root, agent: "claude-code", source: "env:CLAUDE_PROJECT_DIR" },
+      sessionId: "s1", turn: 1, signal: new AbortController().signal,
+    };
+  }
+
+  test("[#1417] ctx_execute python prints non-ASCII text as exact UTF-8 under a non-UTF-8 code page", { skip: findRuntime("python") === null && "no python" }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "cm-1417-ex-"));
+    try {
+      const out = await withLegacyLocale(() => ctxExecute.handler({ language: "python", code: "print(" + JSON.stringify(UTF8_PROBE) + ")" }, ctxRoot(root)));
+      assert.equal(out.isError, false, out.text);
+      assert.equal(out.text.replaceAll("\r\n", "\n"), UTF8_PROBE + "\n"); // Windows python prints CRLF
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("[#1417] ctx_batch: python called from a shell command prints exact UTF-8 under a non-UTF-8 code page", { skip: findRuntime("python") === null && "no python" }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "cm-1417-b-"));
+    try {
+      const py = findRuntime("python").replaceAll("\\", "/");
+      const cmd = "'" + py + "' -c 'print(\"" + UTF8_PROBE + "\")'";
+      const out = await withLegacyLocale(() => ctxBatch.handler({ commands: [cmd], queries: ["café"] }, ctxRoot(root)));
+      assert.equal(out.isError, false, out.text);
+      assert.ok(out.text.includes(UTF8_PROBE), out.text);
+      assert.ok(!out.text.includes("\ufffd"), out.text);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("[#1417] a user's own PYTHONIOENCODING still reaches the python child (guard: the UTF-8 default never overrides it)", { skip: findRuntime("python") === null && "no python" }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "cm-1417-io-"));
+    const saved = process.env.PYTHONIOENCODING;
+    process.env.PYTHONIOENCODING = "ascii:backslashreplace";
+    try {
+      const out = await ctxExecute.handler({ language: "python", code: "import sys; print(sys.stdout.encoding, 'é')" }, ctxRoot(root));
+      assert.equal(out.isError, false, out.text);
+      assert.equal(out.text.replaceAll("\r\n", "\n"), "ascii \\xe9\n"); // Windows python prints CRLF
+    } finally {
+      if (saved === undefined) delete process.env.PYTHONIOENCODING; else process.env.PYTHONIOENCODING = saved;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
